@@ -409,6 +409,7 @@ Recomendação feita ao grupo: comprar a lista completa num único pedido, porqu
 4. **Geratrix:** confirmar se o ZIP recebido é a base atual ou apenas o protótipo visual; o código contém telas estáticas e não a integração MQTT.
 5. **Validação P14:** definir antes dos ensaios o erro aceitável (proposta inicial ±5°) e o número de medições/repetições.
 6. **Escopo acadêmico:** alinhar com Enzo e Theo como a integração IoT aparece no projeto Geratrix e na apresentação. Não haverá teste com pacientes.
+7. **Broker próprio (Enzo, 02/11):** o grupo passará a usar um broker EMQX Cloud Serverless sob gestão do Enzo, com os usuários `caneleira_g01`, `geratrix_g01` e `teste_g01`. Depois da criação, o contrato sobe para a v1.1, alterando só a seção de conexão, e o Rafael é avisado da troca.
 
 **Já respondido:** Rafael é o responsável pela integração MQTT no Geratrix e pela aprovação técnica; o contrato P1 está aprovado. O enunciado e a proposta foram disponibilizados à IA.
 
