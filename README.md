@@ -54,7 +54,7 @@ O enunciado da disciplina e a proposta do grupo não são versionados enquanto o
 
 ## Comunicação
 
-Broker EMQX Cloud, prefixo `imrea/g01/caneleira` (`g01` é provisório). A especificação completa está em `docs/contrato-mqtt-v1.md`.
+Broker EMQX Cloud Serverless na conta do Enzo (`z2f0d126.ala.eu-central-1.emqxsl.com`; TLS na porta 8883, WebSocket seguro na 8084), prefixo `imrea/g01/caneleira` (`g01` é provisório). A especificação completa está em `docs/contrato-mqtt-v1.md` (v1.1).
 
 | Tópico | Direção | Conteúdo |
 |---|---|---|
@@ -65,7 +65,7 @@ Broker EMQX Cloud, prefixo `imrea/g01/caneleira` (`g01` é provisório). A espec
 
 ## Regras do repositório
 
-- Senhas do broker e do Wi-Fi nunca entram no Git. No firmware, elas ficarão em `firmware/caneleira/segredos.h`, já ignorado pelo `.gitignore`. Solicite-as ao Rafael por canal privado.
+- Senhas do broker e do Wi-Fi nunca entram no Git. No firmware, elas ficarão em `firmware/caneleira/segredos.h`, já ignorado pelo `.gitignore`. Solicite-as ao Enzo por canal privado.
 - Tópicos, campos, unidades, QoS e retenção só mudam com nova versão do contrato e aprovação do Rafael.
 - Cada avanço é registrado em `docs/guia-continuidade.md`, com data, ambiente (simulação, bancada ou app), resultado e evidência.
 - Resultado simulado ou com dados fictícios é sempre identificado como tal.

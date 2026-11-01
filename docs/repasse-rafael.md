@@ -68,6 +68,8 @@ Se não houver MPU-6050, encerre a etapa no registro da pendência; não marque 
 
 Prefixo MQTT: `imrea/g01/caneleira`. `g01` é provisório. Broker EMQX Cloud Serverless: `z71f6421.ala.eu-central-1.emqxsl.com`. Para ESP32, conexão MQTT/TLS na porta `8883`, usuário `caneleira_g01`. Para o protótipo Web, `wss://z71f6421.ala.eu-central-1.emqxsl.com:8084/mqtt`, usuário `geratrix_g01`. **As senhas não acompanham este pacote**; solicite-as a Rafael por canal privado, quando necessário. Cada cliente deve ter um ID diferente.
 
+> **Atualização de 01/11/2026:** o broker passou para a conta do Enzo (`z2f0d126.ala.eu-central-1.emqxsl.com`), e as senhas agora ficam com ele. A conexão vigente está em `docs/contrato-mqtt-v1.md` (v1.1).
+
 | Tópico | Direção | Significado |
 |---|---|---|
 | `imrea/g01/caneleira/cmd` | Geratrix -> caneleira | Prescrição do exercício; QoS 1; sem retenção |

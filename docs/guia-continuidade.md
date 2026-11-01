@@ -63,7 +63,7 @@ Confirme em até cinco linhas o estado atual e o próximo passo do roteiro, faç
 |---|---|---|
 | Tema, equipamento e proposta | Decididos; nenhuma validação com pacientes | Seções 1, 3 e 4 |
 | MQTT, quatro tópicos e exemplos fictícios | P1 concluído; Rafael aprovou e os quatro tipos de mensagem circularam no MQTTX Web | `docs/contrato-mqtt-v1.md` |
-| Broker | EMQX Cloud Serverless criado; credenciais ficam fora dos documentos | Contrato MQTT |
+| Broker | Desde 01/11/2026, EMQX Cloud Serverless na conta do Enzo (`z2f0d126`); o broker anterior, do Rafael, deixa de ser usado; credenciais fora dos documentos | Contrato MQTT v1.1 |
 | ESP32 | DevKit V1 de 30 pinos e cabo Micro-USB em mãos; cabo de dados e chip USB-serial ainda sem teste | `docs/inventario-materiais.md` |
 | Outros componentes | Não foram mostrados como disponíveis; compra ainda pendente | Inventário P2 |
 | Geratrix recebido | ZIP contém telas HTML/CSS estáticas; `checkin-exercicio.html` e `historico.html` ainda não têm MQTT nem dados dinâmicos | Cópia recebida em 12/10 |
@@ -199,7 +199,7 @@ GPIOs 34 a 39 são apenas entrada e não têm *pull-up* interno; o divisor resis
 
 **Aprovado por Rafael em 12/10/2026**, responsável pela integração MQTT no Geratrix. Integração e testes somente com dados fictícios. Prefixo: `imrea/g01/caneleira`. MQTT 3.1.1, mensagens UTF-8/JSON, sem nome ou identificação de paciente. O grupo `g01` continua provisório até receber o número oficial.
 
-**Conexão:** EMQX Cloud Serverless `z71f6421.ala.eu-central-1.emqxsl.com`. ESP32: MQTT/TLS, porta `8883`, usuário `caneleira_g01`. Geratrix: WSS `wss://z71f6421.ala.eu-central-1.emqxsl.com:8084/mqtt`, usuário `geratrix_g01`. Senhas guardadas fora do contrato. Clientes MQTT com IDs distintos. Reconexão automática em 2–30 s; reinscrever após reconectar, sem depender de sessão persistente do broker.
+**Conexão (v1.1):** EMQX Cloud Serverless na conta do Enzo, `z2f0d126.ala.eu-central-1.emqxsl.com`. ESP32: MQTT/TLS, porta `8883`, usuário `caneleira_g01`. Geratrix: WSS `wss://z2f0d126.ala.eu-central-1.emqxsl.com:8084/mqtt`, usuário `geratrix_g01`. Testes manuais (MQTTX e Wokwi): usuário `teste_g01`. Senhas guardadas fora do contrato, sob a guarda do Enzo, e repassadas só por canal privado. Clientes MQTT com IDs distintos. Reconexão automática em 2–30 s; reinscrever após reconectar, sem depender de sessão persistente do broker.
 
 | Tópico completo | Quem publica → quem lê | QoS / retain | Conteúdo e momento |
 |---|---|---|---|
@@ -409,7 +409,7 @@ Recomendação feita ao grupo: comprar a lista completa num único pedido, porqu
 4. **Geratrix:** confirmar se o ZIP recebido é a base atual ou apenas o protótipo visual; o código contém telas estáticas e não a integração MQTT.
 5. **Validação P14:** definir antes dos ensaios o erro aceitável (proposta inicial ±5°) e o número de medições/repetições.
 6. **Escopo acadêmico:** alinhar com Enzo e Theo como a integração IoT aparece no projeto Geratrix e na apresentação. Não haverá teste com pacientes.
-7. **Broker próprio (Enzo, 02/11):** o grupo passará a usar um broker EMQX Cloud Serverless sob gestão do Enzo, com os usuários `caneleira_g01`, `geratrix_g01` e `teste_g01`. Depois da criação, o contrato sobe para a v1.1, alterando só a seção de conexão, e o Rafael é avisado da troca.
+7. **Broker próprio:** criado em 01/11/2026 na conta do Enzo (`z2f0d126.ala.eu-central-1.emqxsl.com`), com os usuários `caneleira_g01`, `geratrix_g01` e `teste_g01`; contrato atualizado para a v1.1, só na seção de conexão. Falta repetir no novo broker o teste manual do P1 e registrar o aval do Rafael à troca.
 
 **Já respondido:** Rafael é o responsável pela integração MQTT no Geratrix e pela aprovação técnica; o contrato P1 está aprovado. O enunciado e a proposta foram disponibilizados à IA.
 
