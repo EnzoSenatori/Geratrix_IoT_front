@@ -9,6 +9,7 @@
 | `caneleira.ino` | Configuração, leitura (simulada ou real), impressão dos eventos e biofeedback provisório |
 | `processamento.h` | Lógica sem dependência do Arduino: calibração do giroscópio, filtro complementar, máquina de estados, classificação, séries e JSON |
 | `sinal_simulado.h` | Gerador de repetições fictícias com resultado conhecido |
+| `certificado_ca.h` | Certificado raiz público do broker (DigiCert Global Root G2, válido até 2038), para a conexão TLS no P10 |
 | `diagram.json`, `libraries.txt` | Circuito e bibliotecas do projeto Wokwi |
 
 ## Como rodar no Wokwi

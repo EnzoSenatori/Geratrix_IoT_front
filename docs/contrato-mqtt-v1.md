@@ -2,7 +2,7 @@
 
 **Aprovado por Rafael em 12/10/2026**, responsável pela integração MQTT no Geratrix. Integração e testes somente com dados fictícios. Prefixo: `imrea/g01/caneleira`. MQTT 3.1.1, mensagens UTF-8/JSON, sem nome ou identificação de paciente. O grupo `g01` continua provisório até receber o número oficial.
 
-**Conexão (v1.1):** EMQX Cloud Serverless na conta do Enzo, `z2f0d126.ala.eu-central-1.emqxsl.com`. ESP32: MQTT/TLS, porta `8883`, usuário `caneleira_g01`. Geratrix: WSS `wss://z2f0d126.ala.eu-central-1.emqxsl.com:8084/mqtt`, usuário `geratrix_g01`. Testes manuais (MQTTX e Wokwi): usuário `teste_g01`. Senhas guardadas fora do contrato, sob a guarda do Enzo, e repassadas só por canal privado. Clientes MQTT com IDs distintos. Reconexão automática em 2–30 s; reinscrever após reconectar, sem depender de sessão persistente do broker.
+**Conexão (v1.1):** EMQX Cloud Serverless na conta do Enzo, `z2f0d126.ala.eu-central-1.emqxsl.com`. ESP32: MQTT/TLS, porta `8883`, usuário `caneleira_g01`. Geratrix: WSS `wss://z2f0d126.ala.eu-central-1.emqxsl.com:8084/mqtt`, usuário `geratrix_g01`. Testes manuais (MQTTX e Wokwi): usuário `teste_g01`. A ESP32 valida o broker pelo certificado raiz DigiCert Global Root G2, em `firmware/caneleira/certificado_ca.h`. Senhas guardadas fora do contrato, sob a guarda do Enzo, e repassadas só por canal privado. Clientes MQTT com IDs distintos. Reconexão automática em 2–30 s; reinscrever após reconectar, sem depender de sessão persistente do broker.
 
 | Tópico completo | Quem publica → quem lê | QoS / retain | Conteúdo e momento |
 |---|---|---|---|
