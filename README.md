@@ -16,7 +16,7 @@ O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a l
 | P2 — Compra de componentes | Aberta: só a ESP32 e o cabo estão em mãos | — |
 | P3 — Leitura da IMU a 100 Hz | Concluída | Somente em simulação (Wokwi) |
 | P4 — Leitura real, offset e eixos | Não iniciada; aguarda as peças | — |
-| P5 a P7 — Filtro, contagem e classificação das repetições, resumo da série | Implementadas | Simulação no computador; conferência no Wokwi pendente |
+| P5 a P7 — Filtro, contagem e classificação das repetições, resumo da série | Concluídas em simulação | Computador e Wokwi (01/11) |
 | P8 a P11 — FSR, vibração, MQTT na ESP32 e operação sem rede | Não iniciadas | — |
 | App — integração MQTT (`cmd`, `sessao`, `ack`, `estado`) | Não iniciada; as telas são HTML/CSS estático, com dados fixos | — |
 | P12 a P16 — Autonomia, montagem, validação, documentação e relatório | Não iniciadas | — |

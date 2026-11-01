@@ -1,6 +1,6 @@
 # Firmware da caneleira
 
-**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados e verificados em simulação no computador; falta conferi-los no Wokwi. Nada foi testado ainda na placa real.
+**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. Nada foi testado ainda na placa real.
 
 ## Arquivos
 

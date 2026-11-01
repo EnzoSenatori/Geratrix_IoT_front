@@ -68,7 +68,7 @@ Confirme em até cinco linhas o estado atual e o próximo passo do roteiro, faç
 | Outros componentes | Não foram mostrados como disponíveis; compra ainda pendente | Inventário P2 |
 | Geratrix recebido | ZIP contém telas HTML/CSS estáticas; `checkin-exercicio.html` e `historico.html` ainda não têm MQTT nem dados dinâmicos | Cópia recebida em 12/10 |
 | Firmware P3 | Simulação Wokwi concluída: ESP32 + MPU-6050, 100 Hz, ângulo e velocidade coerentes | [Projeto Wokwi P3](https://wokwi.com/projects/477822826125465601) e `firmware/caneleira/` |
-| Firmware P5–P7 | Implementado em 01/11/2026: filtro complementar, máquina de estados, métricas, classificação e resumo da série; verificado em simulação no computador sobre 30 repetições de resultado conhecido; conferência no Wokwi pendente | `firmware/caneleira/` e `firmware/testes/` |
+| Firmware P5–P7 | Implementado em 01/11/2026: filtro complementar, máquina de estados, métricas, classificação e resumo da série; verificado em simulação no computador sobre 30 repetições de resultado conhecido; executado no Wokwi em 01/11/2026 até o fim da sessão | `firmware/caneleira/` e `firmware/testes/` |
 | Teste físico | P4 ainda não iniciado: falta MPU-6050, protoboard, jumpers e conferência USB da placa | Seção 8 |
 | Repositório | Criado em 01/11/2026 com o conteúdo do pacote de 13/10; nenhum código novo desde então | `github.com/EnzoSenatori/Geratrix_IoT_front` |
 
@@ -313,7 +313,7 @@ Recomendação feita ao grupo: comprar a lista completa num único pedido, porqu
 - **Fazer:** implementar a fórmula da seção 6.4; ajustar α a partir de 0,98; comparar no Serial Plotter θ_acc, o ângulo integrado só pelo giroscópio e θ filtrado, durante o movimento.
 - **Pronto quando:** em movimento, θ filtrado não tem os picos do acelerômetro; parado, não deriva.
 - **Para o relatório:** α escolhido e a figura comparativa das três curvas.
-- **Situação:** implementado em 01/11/2026, com α = 0,98. Em simulação no computador, o offset de 1,7 °/s foi removido e o erro máximo do ângulo filtrado foi de 1,7° em todo o roteiro. Falta conferir no Wokwi e ajustar α com a placa real, cuja aceleração linear a simulação não reproduz.
+- **Situação:** implementado em 01/11/2026, com α = 0,98. Em simulação no computador, o offset de 1,7 °/s foi removido e o erro máximo do ângulo filtrado foi de 1,7° em todo o roteiro. Executado também no Wokwi em 01/11. Falta ajustar α com a placa real, cuja aceleração linear a simulação não reproduz.
 
 **P6 — Máquina de estados das repetições** *(marco crítico)*
 - **Fazer:** implementar os estados e limiares com histerese da seção 6.4; calibrar θ_início, δ e θ_fim; testar 20 repetições contra contagem manual e os casos-limite: repetição incompleta, tremor no topo, pausa no topo.
