@@ -1,135 +1,162 @@
+// Caneleira instrumentada — firmware da ESP32 (P3 a P7).
+// Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
+// ao fim de cada série, imprime o resumo no formato do tópico sessao/<sid> do contrato.
+// Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
+// fictícias cujo resultado esperado é conhecido (ver sinal_simulado.h).
+
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
-#include <math.h>
 
-// P3: leitura da IMU a 100 Hz. Eixos ainda serão confirmados com a placa real.
+#include "processamento.h"
+#include "sinal_simulado.h"
+
+// ===== Configuração =====
+constexpr bool USAR_SINAL_SIMULADO = true;  // false para usar a MPU-6050 real
+constexpr bool IMPRIMIR_ANGULO = false;     // true: ângulos a 10 Hz, útil no P4 e no P5
 constexpr uint8_t PIN_SDA = 21;
 constexpr uint8_t PIN_SCL = 22;
-constexpr uint32_t PERIODO_US = 10000;
-constexpr float RAD_PARA_GRAUS = 180.0f / PI;
+constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
+constexpr float DT_S = PERIODO_US / 1000000.0f;
 
-struct AmostraImu {
-  float ax;
-  float ay;
-  float az;
-  float gx;
-  float gy;
-  float gz;
-};
+// Prescrição provisória, até o P10 recebê-la pelo tópico cmd. Valores fictícios, não
+// clínicos. No modo simulado o descanso cai para 10 s, para o teste não demorar.
+const Prescricao PRESCRICAO_TESTE = {"sim001", 3, 10, 60.0f, 150.0f,
+                                     (uint16_t)(USAR_SINAL_SIMULADO ? 10 : 60)};
 
 Adafruit_MPU6050 imu;
+Caneleira caneleira;
+GeradorSimulado gerador = {12345u, 0.0f};
 uint32_t proximaLeituraUs = 0;
-uint32_t leituraAnteriorUs = 0;
-uint32_t leituras = 0;
+uint32_t amostras = 0;
 uint32_t atrasos = 0;
 
-// Lê aceleração e giro da MPU-6050; retorna falso se a leitura falhar.
-bool lerImu(AmostraImu& amostra) {
-  sensors_event_t aceleracao, giro, temperatura;
-  if (!imu.getEvent(&aceleracao, &giro, &temperatura)) {
-    return false;
+// Lê a próxima amostra: do roteiro simulado ou da MPU-6050 real.
+bool obterLeitura(AmostraImu& a) {
+  if (USAR_SINAL_SIMULADO) {
+    lerImuSimulada(gerador, DT_S, a);
+    return true;
   }
-  amostra.ax = aceleracao.acceleration.x;
-  amostra.ay = aceleracao.acceleration.y;
-  amostra.az = aceleracao.acceleration.z;
-  amostra.gx = giro.gyro.x;
-  amostra.gy = giro.gyro.y;
-  amostra.gz = giro.gyro.z;
+  sensors_event_t aceleracao, giro, temperatura;
+  if (!imu.getEvent(&aceleracao, &giro, &temperatura)) return false;
+  a.ax = aceleracao.acceleration.x;
+  a.ay = aceleracao.acceleration.y;
+  a.az = aceleracao.acceleration.z;
+  a.gx = giro.gyro.x;
+  a.gy = giro.gyro.y;
+  a.gz = giro.gyro.z;
   return true;
 }
 
-// Calcula a inclinação provisória e a velocidade no eixo Y; os eixos serão conferidos em bancada.
-void estimarAnguloProvisorio(const AmostraImu& amostra,
-                            float& anguloAccGraus,
-                            float& velocidadeGrausPorSegundo) {
-  // Rotacao suposta no plano X/Z, em torno de Y. Confirmar eixos no P4.
-  anguloAccGraus = atan2f(amostra.ax, amostra.az) * RAD_PARA_GRAUS;
-  velocidadeGrausPorSegundo = amostra.gy * RAD_PARA_GRAUS;
+// Indica se a caneleira está presa à perna; o FSR entra no P8, até lá sempre verdadeiro.
+bool usoEfetivo() {
+  return true;
 }
 
-// Reserva a atualização da máquina de estados das repetições para P6.
-void atualizarRepeticoes(float anguloGraus, float velocidadeGrausPorSegundo) {
-  // P6: maquina de estados com histerese.
-  (void)anguloGraus;
-  (void)velocidadeGrausPorSegundo;
+// Registra o padrão de vibração do evento; o motor real entra no P9.
+void sinalizar(const char* padrao, const char* motivo) {
+  Serial.printf("  [vibracao] %s - %s\n", padrao, motivo);
 }
 
-// Reserva a lógica do motor de vibração para P9.
-void atualizarBiofeedback() {
-  // P9: motor de vibracao.
-}
-
-// Reserva a comunicação MQTT do contrato g01 v1 para P10.
-void atualizarComunicacao() {
-  // P10: MQTT conforme o contrato g01 v1.
-}
-
-// Inicializa barramento I²C, sensor e monitor serial.
-void setup() {
-  Serial.begin(115200);
-  Wire.begin(PIN_SDA, PIN_SCL);
-  Wire.setClock(400000);
-
-  if (!imu.begin(0x68, &Wire)) {
-    Serial.println("ERRO: MPU-6050 nao encontrado em 0x68. Confira os quatro fios.");
-    while (true) {
-      delay(1000);
-    }
-  }
-
-  imu.setAccelerometerRange(MPU6050_RANGE_2_G);
-  imu.setGyroRange(MPU6050_RANGE_250_DEG);
-  imu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-
-  leituraAnteriorUs = micros();
-  proximaLeituraUs = leituraAnteriorUs + PERIODO_US;
-  Serial.println("P3 iniciado: IMU a 100 Hz; saida resumida a 10 Hz.");
-  Serial.println("amostra,dt_ms,angulo_acc_graus,vel_y_graus_s,atrasos");
-}
-
-// Executa as rotinas sem bloquear a amostragem periódica de 100 Hz.
-void loop() {
-  atualizarComunicacao();
-  atualizarBiofeedback();
-
-  uint32_t agoraUs = micros();
-  if ((int32_t)(agoraUs - proximaLeituraUs) < 0) {
+// Imprime o resumo acumulado da sessão, como será publicado em sessao/<sid> no P10.
+void publicarResumo() {
+  static char json[1024];
+  if (montarJsonSessao(caneleira.sessao, json, sizeof(json)) < 0) {
+    Serial.println("ERRO: resumo maior que o buffer.");
     return;
   }
+  Serial.printf("sessao/%s -> %s\n", caneleira.sessao.p.sid, json);
+}
 
-  const uint32_t inicioUs = agoraUs;
-  const float dtMs = (inicioUs - leituraAnteriorUs) / 1000.0f;
-  leituraAnteriorUs = inicioUs;
+// Texto curto com o resultado da repetição e o motivo, se estiver fora do padrão.
+const char* textoResultado(const Repeticao& rep) {
+  if (rep.valida) return "VALIDA";
+  if (!rep.admOk && !rep.velOk) return "FORA (adm e vel)";
+  return rep.admOk ? "FORA (vel)" : "FORA (adm)";
+}
+
+// Imprime cada evento da sessão e aciona o biofeedback correspondente.
+void tratarEventos(uint8_t ev, const Repeticao& rep) {
+  const Sessao& s = caneleira.sessao;
+
+  if (ev & EV_CALIBRADO) {
+    Serial.printf("Offset do giroscopio: %.2f graus/s.\n", caneleira.calib.offset);
+    Serial.printf("Sessao %s iniciada: %u series x %u reps, ADM min %.0f graus, "
+                  "vel max %.0f graus/s, descanso %u s.\n",
+                  s.p.sid, (unsigned)s.p.series, (unsigned)s.p.reps, s.p.admMin, s.p.velMax,
+                  (unsigned)s.p.descanso);
+    Serial.println("Serie 1 iniciada.");
+  }
+  if (ev & EV_REP_SEM_USO) Serial.println("Movimento ignorado: caneleira fora da perna.");
+
+  if (ev & (EV_REP_VALIDA | EV_REP_FORA)) {
+    const ResumoSerie& r = s.resumos[s.serie];
+    Serial.printf("Serie %u, rep %2u/%u | ADM %5.1f | vel %5.1f graus/s | sobe %.1f s | "
+                  "desce %.1f s | %s\n",
+                  (unsigned)r.n, (unsigned)r.total, (unsigned)s.p.reps, rep.adm, rep.velPico,
+                  rep.tConc, rep.tExc, textoResultado(rep));
+    if (rep.valida) sinalizar("1 pulso curto", "repeticao valida");
+    else sinalizar("2 pulsos curtos", "repeticao fora do padrao");
+  }
+  if (ev & EV_FIM_SERIE) {
+    sinalizar("3 pulsos curtos", "fim de serie");
+    publicarResumo();
+    if (!(ev & EV_SESSAO_CONCLUIDA)) Serial.printf("Descanso de %u s.\n", (unsigned)s.p.descanso);
+  }
+  if (ev & EV_FIM_DESCANSO) {
+    sinalizar("1 pulso longo", "fim do descanso");
+    Serial.printf("Serie %u iniciada.\n", (unsigned)(s.serie + 1));
+  }
+  if (ev & EV_SESSAO_CONCLUIDA) Serial.println("Sessao concluida.");
+}
+
+// Inicializa o monitor serial, o sensor (no modo real) e o processamento.
+void setup() {
+  Serial.begin(115200);
+
+  if (!USAR_SINAL_SIMULADO) {
+    Wire.begin(PIN_SDA, PIN_SCL);
+    Wire.setClock(400000);
+    if (!imu.begin(0x68, &Wire)) {
+      Serial.println("ERRO: MPU-6050 nao encontrado em 0x68. Confira os quatro fios.");
+      while (true) delay(1000);
+    }
+    imu.setAccelerometerRange(MPU6050_RANGE_2_G);
+    imu.setGyroRange(MPU6050_RANGE_250_DEG);  // satura acima de 250 graus/s
+    imu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  }
+
+  iniciarCaneleira(caneleira, PRESCRICAO_TESTE);
+  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P7 - modo SIMULADO (repeticoes ficticias)."
+                                     : "Caneleira P7 - MPU-6050 real.");
+  Serial.println("Calibrando o giroscopio: mantenha a perna parada por 2 s...");
+  proximaLeituraUs = micros() + PERIODO_US;
+}
+
+// Amostra a 100 Hz sem bloquear e entrega cada leitura ao processamento.
+void loop() {
+  const uint32_t agoraUs = micros();
+  if ((int32_t)(agoraUs - proximaLeituraUs) < 0) return;
 
   proximaLeituraUs += PERIODO_US;
-  if ((int32_t)(micros() - proximaLeituraUs) >= 0) {
+  if ((int32_t)(micros() - proximaLeituraUs) >= 0) {  // perdeu o próximo instante
     atrasos++;
     proximaLeituraUs = micros() + PERIODO_US;
   }
 
-  AmostraImu amostra;
-  if (!lerImu(amostra)) {
+  AmostraImu leitura;
+  if (!obterLeitura(leitura)) {
     Serial.println("ERRO: falha na leitura da MPU-6050.");
     return;
   }
 
-  float anguloAccGraus = 0;
-  float velocidadeGrausPorSegundo = 0;
-  estimarAnguloProvisorio(amostra, anguloAccGraus,
-                         velocidadeGrausPorSegundo);
-  atualizarRepeticoes(anguloAccGraus, velocidadeGrausPorSegundo);
+  Repeticao rep;
+  const uint8_t eventos = processarLeitura(caneleira, leitura, DT_S, usoEfetivo(), rep);
+  if (eventos) tratarEventos(eventos, rep);
 
-  leituras++;
-  if (leituras % 10 == 0) {
-    Serial.print(leituras);
-    Serial.print(',');
-    Serial.print(dtMs, 2);
-    Serial.print(',');
-    Serial.print(anguloAccGraus, 1);
-    Serial.print(',');
-    Serial.print(velocidadeGrausPorSegundo, 1);
-    Serial.print(',');
-    Serial.println(atrasos);
+  amostras++;
+  if (IMPRIMIR_ANGULO && amostras % 10 == 0) {
+    Serial.printf("theta_acc %.1f | theta %.1f | omega %.1f | atrasos %lu\n", caneleira.thetaAcc,
+                  caneleira.theta, caneleira.omega, (unsigned long)atrasos);
   }
 }

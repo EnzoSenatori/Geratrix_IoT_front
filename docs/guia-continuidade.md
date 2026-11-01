@@ -1,7 +1,7 @@
 # Guia de continuidade — Caneleira instrumentada para extensão de joelho
 
 **Projeto de Extensão · Desenvolvimento IoT · parceria IMREA**
-Atualizado em 13/10/2026 (caminhos e repositório em 01/11/2026) · preparado para que o Rafael de Oliveira Corrêa dê sequência ao projeto com o apoio de uma IA, no mesmo método usado até aqui.
+Atualizado em 13/10/2026; repositório e P5 a P7 em 01/11/2026 · preparado para que o Rafael de Oliveira Corrêa dê sequência ao projeto com o apoio de uma IA, no mesmo método usado até aqui.
 
 ---
 
@@ -68,6 +68,7 @@ Confirme em até cinco linhas o estado atual e o próximo passo do roteiro, faç
 | Outros componentes | Não foram mostrados como disponíveis; compra ainda pendente | Inventário P2 |
 | Geratrix recebido | ZIP contém telas HTML/CSS estáticas; `checkin-exercicio.html` e `historico.html` ainda não têm MQTT nem dados dinâmicos | Cópia recebida em 12/10 |
 | Firmware P3 | Simulação Wokwi concluída: ESP32 + MPU-6050, 100 Hz, ângulo e velocidade coerentes | [Projeto Wokwi P3](https://wokwi.com/projects/477822826125465601) e `firmware/caneleira/` |
+| Firmware P5–P7 | Implementado em 01/11/2026: filtro complementar, máquina de estados, métricas, classificação e resumo da série; verificado em simulação no computador sobre 30 repetições de resultado conhecido; conferência no Wokwi pendente | `firmware/caneleira/` e `firmware/testes/` |
 | Teste físico | P4 ainda não iniciado: falta MPU-6050, protoboard, jumpers e conferência USB da placa | Seção 8 |
 | Repositório | Criado em 01/11/2026 com o conteúdo do pacote de 13/10; nenhum código novo desde então | `github.com/EnzoSenatori/Geratrix_IoT_front` |
 
@@ -182,7 +183,7 @@ GPIOs 34 a 39 são apenas entrada e não têm *pull-up* interno; o divisor resis
    - `REPOUSO` → `SUBINDO` quando θ > θ_início (≈ 15°, a calibrar);
    - `SUBINDO` → `DESCENDO` quando θ cai δ abaixo do pico registrado (δ ≈ 5°, a calibrar), o que evita que tremor no topo gere dois picos;
    - `DESCENDO` → `REPOUSO` quando θ < θ_fim (≈ 10°, a calibrar), e **a repetição é contabilizada**.
-6. **Métricas por repetição:** ADM, velocidade de pico na subida, duração da fase concêntrica (início → pico) e da excêntrica (pico → retorno).
+6. **Métricas por repetição:** ADM, velocidade de pico na subida, duração da fase concêntrica (início → pico) e da excêntrica (pico → retorno). *Implementação de 01/11:* as fases são medidas pelo giroscópio — concêntrica é o tempo com ω acima de +10 °/s; excêntrica, abaixo de −10 °/s —, o que exclui pausas no topo e dispensa localizar o instante exato do pico.
 7. **Classificação:** válida se ADM ≥ `adm_min` **e** velocidade de pico ≤ `vel_max` **e** uso efetivo confirmado pelo FSR. Caso contrário, fora do padrão, com o motivo (`adm` ou `vel`). Movimento sem uso efetivo não é contado.
 8. **Descanso:** cronometrado pelo próprio ESP32, com aviso vibratório ao final.
 9. **Biofeedback — padrões propostos** (a confirmar no Passo 9):
@@ -312,15 +313,18 @@ Recomendação feita ao grupo: comprar a lista completa num único pedido, porqu
 - **Fazer:** implementar a fórmula da seção 6.4; ajustar α a partir de 0,98; comparar no Serial Plotter θ_acc, o ângulo integrado só pelo giroscópio e θ filtrado, durante o movimento.
 - **Pronto quando:** em movimento, θ filtrado não tem os picos do acelerômetro; parado, não deriva.
 - **Para o relatório:** α escolhido e a figura comparativa das três curvas.
+- **Situação:** implementado em 01/11/2026, com α = 0,98. Em simulação no computador, o offset de 1,7 °/s foi removido e o erro máximo do ângulo filtrado foi de 1,7° em todo o roteiro. Falta conferir no Wokwi e ajustar α com a placa real, cuja aceleração linear a simulação não reproduz.
 
 **P6 — Máquina de estados das repetições** *(marco crítico)*
 - **Fazer:** implementar os estados e limiares com histerese da seção 6.4; calibrar θ_início, δ e θ_fim; testar 20 repetições contra contagem manual e os casos-limite: repetição incompleta, tremor no topo, pausa no topo.
 - **Pronto quando:** 20 de 20 repetições contadas, sem dupla contagem, e repetição incompleta não aparece como válida.
 - **Para o relatório:** diagrama de estados e limiares finais.
+- **Situação:** implementado em 01/11/2026, com um estado adicional, FINALIZANDO: a repetição só é contada quando a descida termina. Se o ângulo voltar a passar do pico, a subida é retomada sem nova contagem. Em simulação, 30 de 30 repetições foram contadas, sem dupla contagem com tremor ou pausa no topo, e as incompletas saíram como fora do padrão. Limiares ainda a calibrar em bancada.
 
 **P7 — Métricas e classificação**
 - **Fazer:** calcular ADM, velocidade de pico e durações das fases; classificar contra uma prescrição fixa provisória (3 × 10, ADM mínima de 60°, velocidade máxima de 150 °/s, descanso de 60 s); ao fim de cada série, imprimir o resumo em JSON no formato exato do contrato.
 - **Pronto quando:** o JSON do serial é idêntico em estrutura à mensagem `sessao` do contrato.
+- **Situação:** implementado em 01/11/2026 e verificado em simulação: 7 válidas, 2 desvios de ADM e 1 de velocidade por série, como esperado, e JSON no formato do contrato. Definições adotadas no resumo, a validar com o Rafael: `adm_media`, `t_conc` e `t_exc` são médias de todas as repetições da série; `vel_pico` é o máximo da série; `status` vale `descanso` entre séries. O resumo de três séries tem 412 bytes, acima do buffer padrão de 256 bytes da PubSubClient, a ajustar no P10.
 
 **P8 — FSR e uso efetivo**
 - **Fazer:** divisor com 10 kΩ no GPIO 34; levantar a faixa de leitura com a caneleira presa e solta; definir o limiar com histerese; impedir a contagem sem uso efetivo.

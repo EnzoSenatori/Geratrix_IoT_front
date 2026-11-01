@@ -6,6 +6,8 @@ segredos.h
 # Compilação (Arduino CLI / PlatformIO)
 build/
 .pio/
+firmware/testes/teste
+firmware/testes/teste.exe
 
 # Arquivos de sistema
 .DS_Store
