@@ -283,6 +283,17 @@ Recomendação feita ao grupo: comprar a lista completa num único pedido, porqu
 
 **Caminho crítico atualizado:** P1 foi concluído. Restam P2 e P4 a P6 para validar o sensoriamento físico e a contagem de repetições; a implementação MQTT do Geratrix pode avançar em paralelo com dados fictícios.
 
+**Frente sem hardware (decisão de 01/11/2026).** Enquanto as peças não chegam, o grupo concentra-se no que não depende da placa, testando no Wokwi, no navegador e no computador. Ordem:
+
+1. **P10 e P11 — MQTT na ESP32, no Wokwi e no broker do Enzo.** Pronto quando: o `cmd` enviado pelo MQTTX é aplicado; cada série aparece em `sessao/<sid>`; o `ack` final limpa a mensagem retida; uma queda de conexão simulada no meio da sessão não perde séries; parar a simulação faz `estado` virar `{"online":false}`.
+2. **Integração MQTT no Geratrix.** Pronto quando: a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava no navegador antes de publicar o `ack`, e o histórico exibe as sessões gravadas.
+3. **P9 — biofeedback.** Os quatro padrões, com um LED no lugar do motor, sem atrasar a amostragem de 100 Hz.
+4. **P8 — uso efetivo.** Limite com histerese, com um potenciômetro no lugar do FSR; com a caneleira "solta", nenhuma repetição é contada.
+5. **Botão e P12 — baixo consumo.** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão.
+6. **Documentação.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia calculada pelas correntes do datasheet, protocolo de validação (P14) e as seções do relatório que não dependem de medições.
+
+Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limites com movimento real (P6), faixa real do FSR, corrente medida, montagem (P13) e ensaios (P14).
+
 ---
 
 ### Fase 1 — Pendências de definição
