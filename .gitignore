@@ -1,0 +1,13 @@
+# Credenciais — nunca versionar
+segredos.h
+*.local.js
+.env
+
+# Compilação (Arduino CLI / PlatformIO)
+build/
+.pio/
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
