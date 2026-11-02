@@ -84,6 +84,30 @@ int main() {
   for (int k = 0; k < 50; k++) contou = detectarRepeticao(d, 0.0f, 0.0f, DT, true, repReinicio) || contou;
   verificar(!contou, "descida em curso ao reiniciar o detector nao vira repeticao");
 
+  // Prescrição do cmd: aceita a do contrato, recusa sid com caractere de tópico e séries 0.
+  const Prescricao doContrato = {"s7f3a", 3, 10, 60.0f, 150.0f, 60};
+  Prescricao sidRuim = doContrato;
+  snprintf(sidRuim.sid, sizeof(sidRuim.sid), "a/b");
+  Prescricao semSeries = doContrato;
+  semSeries.series = 0;
+  verificar(prescricaoValida(doContrato) && !prescricaoValida(sidRuim) && !prescricaoValida(semSeries),
+            "validacao da prescricao recebida pelo cmd");
+
+  // Sem prescrição, a sessão espera o cmd depois da calibração; com ela, começa na hora.
+  Caneleira espera;
+  iniciarCaneleira(espera, Prescricao{});
+  GeradorSimulado g2 = {12345u, 0.0f};
+  Repeticao r2;
+  for (int k = 0; k < AMOSTRAS_CALIBRACAO + 100; k++) {
+    AmostraImu a;
+    lerImuSimulada(g2, DT, a);
+    processarLeitura(espera, a, DT, true, r2);
+  }
+  const bool aguardou = espera.calib.pronta && espera.sessao.status == StatusSessao::AGUARDANDO;
+  receberPrescricao(espera, doContrato);
+  verificar(aguardou && espera.sessao.status == StatusSessao::EM_EXECUCAO,
+            "sessao aguarda o cmd e comeca ao receber a prescricao");
+
   printf("\n%s\n", falhas == 0 ? "RESULTADO: todas as verificacoes passaram." : "RESULTADO: ha falhas.");
   return falhas == 0 ? 0 : 1;
 }

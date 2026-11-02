@@ -236,6 +236,17 @@ enum : uint8_t {
   EV_CALIBRADO = 64,
 };
 
+// Confere se a prescrição recebida pelo cmd é utilizável. São limites técnicos de
+// coerência dos dados, não limites clínicos.
+inline bool prescricaoValida(const Prescricao& p) {
+  const size_t n = strnlen(p.sid, sizeof(p.sid));
+  if (n == 0 || n >= sizeof(p.sid)) return false;
+  if (strchr(p.sid, '/') || strchr(p.sid, '+') || strchr(p.sid, '#')) return false;
+  return p.series >= 1 && p.series <= MAX_SERIES && p.reps >= 1 && p.reps <= 50 &&
+         p.admMin > 0 && p.admMin <= 120 && p.velMax > 0 && p.velMax <= 500 &&
+         p.descanso <= 600;
+}
+
 // Começa a sessão pela primeira série, com a prescrição recebida.
 inline void iniciarSessao(Sessao& s, const Prescricao& p, float thetaAtual) {
   s = Sessao{};
@@ -359,11 +370,18 @@ struct Caneleira {
   float omega;     // °/s, já sem offset
 };
 
-// Prepara o processamento; a sessão começa assim que o offset do giroscópio for medido.
+// Prepara o processamento. Com uma prescrição (séries > 0), a sessão começa assim que o
+// offset do giroscópio for medido; sem ela, aguarda a prescrição pelo cmd.
 inline void iniciarCaneleira(Caneleira& c, const Prescricao& p) {
   c = Caneleira{};
   c.prescricao = p;
   c.sessao.status = StatusSessao::AGUARDANDO;
+}
+
+// Recebe a prescrição do app: começa a sessão já, ou logo após a calibração.
+inline void receberPrescricao(Caneleira& c, const Prescricao& p) {
+  c.prescricao = p;
+  if (c.calib.pronta) iniciarSessao(c.sessao, p, c.theta);
 }
 
 // Processa uma leitura da IMU (chamada a 100 Hz): calibração, ângulo, repetição e sessão.
@@ -375,7 +393,7 @@ inline uint8_t processarLeitura(Caneleira& c, const AmostraImu& a, float dt, boo
   if (!c.calib.pronta) {
     if (!acumularCalibracao(c.calib, omegaBruto)) return 0;
     c.theta = atualizarFiltro(c.filtro, c.thetaAcc, 0.0f, dt);
-    iniciarSessao(c.sessao, c.prescricao, c.theta);
+    if (c.prescricao.series > 0) iniciarSessao(c.sessao, c.prescricao, c.theta);  // senão, aguarda o cmd
     return EV_CALIBRADO;
   }
 

@@ -1,0 +1,62 @@
+Topic: imrea/g01/caneleira/cmd QoS: 1
+{"sid":"s7f3a","series":2,"reps":10,"adm_min":60,"vel_max":150,"descanso":10}
+
+2026-11-02 20:23:18:873
+Topic: imrea/g01/caneleira/cmd QoS: 1
+{"sid":"s7f3a","series":2,"reps":10,"adm_min":60,"vel_max":150,"descanso":10}
+
+2026-11-02 20:23:18:884
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-83,"uso":true,"sid":"s7f3a"}
+
+2026-11-02 20:24:22:182
+Topic: imrea/g01/caneleira/sessao/s7f3a QoS: 0
+{"sid":"s7f3a","status":"descanso","series":[{"n":1,"validas":7,"total":10,"adm_media":65.4,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+
+2026-11-02 20:25:03:241
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-77,"uso":true,"sid":"s7f3a"}
+
+2026-11-02 20:25:14:376
+Topic: imrea/g01/caneleira/ack QoS: 1
+{"sid":"s7f3a","series_recebidas":1}
+
+2026-11-02 20:25:39:204
+Topic: imrea/g01/caneleira/ack QoS: 1
+{"sid":"s7f3a","series_recebidas":1}
+
+2026-11-02 20:25:39:218
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-92,"uso":true,"sid":"s7f3a"}
+
+2026-11-02 20:26:00:487
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-95,"uso":true,"sid":"s7f3a"}
+
+2026-11-02 20:26:44:602
+Topic: imrea/g01/caneleira/sessao/s7f3a QoS: 0
+{"sid":"s7f3a","status":"concluida","series":[{"n":1,"validas":7,"total":10,"adm_media":65.4,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5},{"n":2,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+
+2026-11-02 20:27:26:833
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-73,"uso":true,"sid":"s7f3a"}
+
+2026-11-02 20:27:28:549
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-88,"uso":true,"sid":"s7f3a"}
+
+2026-11-02 20:28:12:292
+Topic: imrea/g01/caneleira/ack QoS: 1
+{"sid":"s7f3a","series_recebidas":2}
+
+2026-11-02 20:28:41:145
+Topic: imrea/g01/caneleira/ack QoS: 1
+{"sid":"s7f3a","series_recebidas":2}
+
+2026-11-02 20:28:41:158
+Topic: imrea/g01/caneleira/sessao/s7f3a QoS: 0
+
+
+2026-11-02 20:28:41:470
+Topic: imrea/g01/caneleira/estado QoS: 0
+{"online":true,"bat":0,"rssi":-80,"uso":true,"sid":"s7f3a"}

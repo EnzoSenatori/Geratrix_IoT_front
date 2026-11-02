@@ -10,7 +10,7 @@ Lógica IoT da caneleira instrumentada para extensão de joelho, integrada ao ap
 
 ## Estado atual
 
-O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a lógica de contagem e classificação das repetições (P5 a P7), o uso efetivo (P8), o biofeedback (P9) e a primeira parte do MQTT na ESP32 (P10). A especificação completa está em `docs/guia-continuidade.md`.
+O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a lógica de contagem e classificação das repetições (P5 a P7), o uso efetivo (P8), o biofeedback (P9) e o MQTT na ESP32 (P10). A especificação completa está em `docs/guia-continuidade.md`.
 
 | Etapa | Situação | Onde foi verificada |
 |---|---|---|
@@ -21,7 +21,7 @@ O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a l
 | P5 a P7 — Filtro, contagem e classificação das repetições, resumo da série | Concluídas em simulação | Computador e Wokwi (01/11) |
 | P8 — Uso efetivo pelo sensor de pressão | Concluída em simulação | Wokwi, com potenciômetro no lugar do FSR (02/11) |
 | P9 — Biofeedback por vibração | Concluída em simulação | Wokwi, com LED no lugar do motor (02/11) |
-| P10 — MQTT na ESP32 | Em andamento: Wi-Fi, conexão segura, aviso de desconexão e `estado` funcionam; faltam `cmd`, `sessao` e `ack` | Wokwi e MQTTX, no broker novo (02/11) |
+| P10 — MQTT na ESP32 | Concluída em simulação: `estado`, aviso de desconexão, `cmd`, `sessao/<sid>` e `ack`. Falta testar a queda de conexão no Wokwi, junto com o P11 | Wokwi e MQTTX, no broker novo (02/11) |
 | P11 — Operação sem rede | Não iniciada | — |
 | App — integração MQTT (`cmd`, `sessao`, `ack`, `estado`) | Não iniciada; as telas são HTML/CSS estático, com dados fixos | — |
 | P12 a P16 — Autonomia, montagem, validação, documentação e relatório | Não iniciadas | — |
