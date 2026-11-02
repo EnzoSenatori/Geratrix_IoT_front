@@ -1,6 +1,6 @@
 # Firmware da caneleira
 
-**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. Nada foi testado ainda na placa real.
+**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. Do P10, a conexão Wi-Fi, a conexão segura ao broker, o aviso de desconexão e a publicação de `estado` foram verificados no Wokwi e no MQTTX em 02/11/2026; faltam receber o `cmd` e publicar as séries. Nada foi testado ainda na placa real.
 
 ## Arquivos
 
@@ -10,7 +10,8 @@
 | `processamento.h` | Lógica sem dependência do Arduino: calibração do giroscópio, filtro complementar, máquina de estados, classificação, séries e JSON |
 | `sinal_simulado.h` | Gerador de repetições fictícias com resultado conhecido |
 | `biofeedback.h` | Padrões de vibração tocados sem bloquear a amostragem (lógica pura) |
-| `certificado_ca.h` | Certificado raiz público do broker (DigiCert Global Root G2, válido até 2038), para a conexão TLS no P10 |
+| `certificado_ca.h` | Certificado raiz público do broker (DigiCert Global Root G2, válido até 2038), para a conexão TLS |
+| `segredos.exemplo.h` | Modelo das credenciais. Copie como `segredos.h`, que o Git ignora, e preencha as senhas |
 | `diagram.json`, `libraries.txt` | Circuito e bibliotecas do projeto Wokwi |
 
 ## Circuito no Wokwi
@@ -31,8 +32,9 @@ Os GPIOs 34 e 35 estão no ADC1, o único utilizável com o Wi-Fi ligado; o 33 p
 
 1. Abra o [projeto P3 no Wokwi](https://wokwi.com/projects/477822826125465601), use **Save a copy** para ter a sua cópia e substitua o `diagram.json` pelo desta pasta.
 2. Substitua todo o conteúdo de `sketch.ino` pelo de `caneleira.ino`.
-3. Crie os arquivos `processamento.h`, `sinal_simulado.h` e `biofeedback.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes.
-4. Clique em ▶. As alterações não precisam ser salvas para rodar.
+3. Crie os arquivos `processamento.h`, `sinal_simulado.h`, `biofeedback.h` e `certificado_ca.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes. Substitua também o `libraries.txt`.
+4. Crie o `segredos.h` com o conteúdo de `segredos.exemplo.h`. Salve o projeto ainda com o marcador no lugar da senha; só então digite a senha do `teste_g01`, rode e **não salve mais**: o projeto do Wokwi é público.
+5. Clique em ▶. As alterações não precisam ser salvas para rodar. Com `USAR_REDE = false`, o firmware funciona sem Wi-Fi nem broker.
 
 Com `USAR_SINAL_SIMULADO = true`, o sensor virtual é ignorado e o firmware processa o roteiro fictício. A primeira série termina em cerca de 45 s, e a sessão completa, em menos de 3 min.
 
@@ -71,6 +73,9 @@ O gerador acrescenta ruído ao acelerômetro e ao giroscópio e um offset de 1,7
 - **Uso efetivo:** tensão do divisor do FSR no GPIO 34, com histerese: presa a partir de 1,2 V, solta abaixo de 0,8 V; entre os dois, mantém o estado. Valores provisórios. Com `USAR_FSR = false`, a caneleira é considerada sempre presa.
 - **Reinício do detector:** depois de um descanso, uma nova repetição só é aceita quando a perna é vista em repouso (abaixo de 10°); assim, a descida em curso no fim do descanso não vira repetição.
 - **Biofeedback:** 1 pulso curto para repetição válida, 2 para fora do padrão, 3 no fim da série e 1 longo no fim do descanso; pulsos de 150 ms (longo, 600 ms), 150 ms entre pulsos e 500 ms entre padrões. Os padrões entram numa fila e tocam pelo PWM do GPIO 26, consultando `millis()` a cada volta do `loop()`, sem `delay()`.
+- **Comunicação:** o Wi-Fi conecta sem bloquear. A conexão segura ao broker trava a ESP32 por 1 a 2 s, por isso só é tentada fora de uma série, com espera crescente de 2 s a 30 s entre tentativas. Na conexão, a caneleira registra o aviso de desconexão `{"online":false}`, retido, e publica `estado` na conexão, quando o uso muda e a cada 60 s.
+- **Wokwi e tempo real:** o simulador roda a cerca de 50% do tempo real, e o broker conta o tempo real. Com `NO_WOKWI = true`, o `estado` sai a cada 20 s e o keepalive sobe para 60 s, para o broker não dar a caneleira por desconectada. Na placa real, `NO_WOKWI = false` volta aos 60 s do contrato e ao keepalive de 15 s.
+- **Bateria:** o GPIO 35 lê metade da tensão da LiPo; 3,3 V vira 0% e 4,2 V vira 100%, em aproximação linear provisória.
 - **Resumo da série (a validar com o Rafael):** `adm_media`, `t_conc` e `t_exc` são médias de todas as repetições; `vel_pico` é o máximo da série; `status` vale `descanso` entre séries e `concluida` ao final; `ts` é `null` até haver hora de rede.
 
 ## Constantes a calibrar em bancada
@@ -92,7 +97,7 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 
 - A simulação não reproduz a aceleração linear do movimento, que existirá na placa real e pode exigir outro α.
 - A prescrição é fixa (`PRESCRICAO_TESTE`) até o P10 recebê-la pelo tópico `cmd`; no modo simulado, o descanso é de 10 s.
-- Nada é publicado no broker ainda (P10).
+- O `cmd` ainda não é recebido, e o resumo das séries ainda não sai em `sessao/<sid>` (P10, parte 2): a sessão começa sozinha com `PRESCRICAO_TESTE`.
 - A vibração foi vista num LED; a distinção dos padrões na perna e a intensidade dependem do motor real.
 - O FSR é simulado por um potenciômetro; os limiares de uso ainda não foram medidos.
 - O roteiro simulado se repete sem fim, para que repetições descartadas num teste não esgotem o movimento.

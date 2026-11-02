@@ -1,10 +1,10 @@
 # Como continuar o projeto da caneleira
 
-01/11/2026 · Enzo Senatori
+02/11/2026 · Enzo Senatori
 
 ## Para que serve este guia
 
-Este guia permite que qualquer integrante, com ou sem IA, retome o projeto a partir do estado de 01/11/2026 sem depender de quem o conduzia. Todo o material está no repositório [Geratrix_IoT_front](https://github.com/EnzoSenatori/Geratrix_IoT_front).
+Este guia permite que qualquer integrante, com ou sem IA, retome o projeto a partir do estado registrado aqui sem depender de quem o conduzia. Todo o material está no repositório [Geratrix_IoT_front](https://github.com/EnzoSenatori/Geratrix_IoT_front).
 
 Ordem de leitura antes de mexer em qualquer coisa:
 
@@ -26,17 +26,20 @@ O protótipo é didático: não é dispositivo médico, não é testado em pacie
 
 ## Onde estamos
 
-Em 01/11/2026, o núcleo de processamento do firmware funciona em simulação. Nada foi testado ainda na placa real nem no app, e as peças não foram compradas.
+Em 02/11/2026, o firmware conta e classifica as repetições, ignora movimento sem uso, sinaliza por vibração e publica o estado no broker, tudo em simulação. Nada foi testado ainda na placa real nem no app, e as peças não foram compradas.
 
 | Etapa | Situação | Onde foi verificada |
 | --- | --- | --- |
-| P1 — Contrato MQTT | Concluída; v1.1 desde 01/11, com o broker novo | MQTTX, em 12/10, no broker anterior; falta repetir no novo |
+| P1 — Contrato MQTT | Concluída; v1.1 desde 01/11, com o broker novo | MQTTX: em 12/10 no broker anterior; em 02/11 no novo |
 | Broker próprio | Criado em 01/11 na conta do Enzo, com três usuários | Painel do EMQX |
 | P2 — Compra de componentes | Aberta: só a ESP32 e o cabo, com o Rafael | — |
 | P3 — Leitura do sensor a 100 Hz | Concluída | Wokwi, em 13/10 |
 | P4 — Leitura real, offset e eixos | Não iniciada; aguarda as peças | — |
 | P5 a P7 — Filtro, contagem, classificação e resumo da série | Concluídas em simulação | Computador e Wokwi, em 01/11 |
-| P8 a P11 — Sensor de pressão, vibração, MQTT na ESP32, operação sem rede | Não iniciadas | — |
+| P8 — Uso efetivo pelo sensor de pressão | Concluída em simulação | Wokwi, com potenciômetro no lugar do FSR, em 02/11 |
+| P9 — Biofeedback por vibração | Concluída em simulação | Wokwi, com LED no lugar do motor, em 02/11 |
+| P10 — MQTT na ESP32 | Parte 1 concluída: Wi-Fi, conexão segura, aviso de desconexão e `estado` | Wokwi e MQTTX, em 02/11 |
+| P11 — Operação sem rede | Não iniciada | — |
 | App — integração MQTT no Geratrix | Não iniciada; as telas são só visuais | — |
 | P12 a P16 — Autonomia, montagem, validação, documentação, relatório | Não iniciadas | — |
 
@@ -46,17 +49,14 @@ O `README.md` do repositório traz sempre a versão mais recente desta tabela.
 
 Enquanto as peças não chegam, o grupo trabalha no que não depende da placa, nesta ordem. Antes de começar um item, avise no grupo para ninguém fazer o mesmo em paralelo.
 
-1. **MQTT na ESP32 (P10 e P11)**, no Wokwi e no broker do grupo. Pronto quando:
-    - o `cmd` enviado pelo MQTTX é aplicado;
+1. **MQTT na ESP32, parte 2 (P10 e P11)**, no Wokwi e no broker do grupo. A conexão, o aviso de desconexão e o `estado` já funcionam. Pronto quando:
+    - o `cmd` enviado pelo MQTTX é aplicado e a sessão só começa com ele;
     - cada série aparece em `sessao/<sid>`;
     - o `ack` final limpa a mensagem retida;
-    - uma queda de conexão simulada não perde séries;
-    - parar a simulação faz `estado` virar `{"online":false}`.
-2. **Integração MQTT no Geratrix.** Pronto quando a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava no navegador antes de publicar o `ack`, e o histórico exibe as sessões gravadas.
-3. **Biofeedback (P9).** Os quatro padrões de vibração, com um LED no lugar do motor, sem atrasar a amostragem de 100 Hz.
-4. **Uso efetivo (P8).** Limite com histerese, com um potenciômetro no lugar do sensor de pressão; com a caneleira "solta", nenhuma repetição é contada.
-5. **Botão e baixo consumo (P12).** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão.
-6. **Documentação.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia calculada pelas correntes do datasheet, protocolo de validação (P14) e as seções do relatório que não dependem de medições.
+    - uma queda de conexão simulada não perde séries, que ficam guardadas até o `ack`.
+2. **Botão e baixo consumo (P12).** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão; publicar `{"online":false}` antes de dormir.
+3. **Integração MQTT no app.** Pronto quando a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava antes de publicar o `ack`, e o histórico exibe as sessões gravadas. O grupo planeja levar o Geratrix para Flutter; o contrato não muda, e um app instalado pode usar a porta 8883, como a ESP32.
+4. **Documentação.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia calculada pelas correntes do datasheet, protocolo de validação (P14) e as seções do relatório que não dependem de medições.
 
 Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limites com movimento real (P6), faixa real do sensor de pressão, corrente medida, montagem (P13) e ensaios (P14).
 

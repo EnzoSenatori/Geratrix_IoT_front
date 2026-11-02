@@ -1,4 +1,4 @@
-// Caneleira instrumentada — firmware da ESP32 (P3 a P9).
+// Caneleira instrumentada — firmware da ESP32 (P3 a P10).
 // Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
 // ao fim de cada série, imprime o resumo no formato do tópico sessao/<sid> do contrato.
 // Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
@@ -6,15 +6,22 @@
 
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <PubSubClient.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <Wire.h>
 
 #include "biofeedback.h"
+#include "certificado_ca.h"
 #include "processamento.h"
+#include "segredos.h"
 #include "sinal_simulado.h"
 
 // ===== Configuração =====
 constexpr bool USAR_SINAL_SIMULADO = true;  // false para usar a MPU-6050 real
 constexpr bool IMPRIMIR_ANGULO = false;     // true: ângulos a 10 Hz, útil no P4 e no P5
+constexpr bool USAR_REDE = true;            // false: funciona sem Wi-Fi nem broker
+constexpr bool NO_WOKWI = true;             // o simulador roda abaixo do tempo real (ver ESTADO_PERIODO_MS)
 constexpr uint8_t PIN_SDA = 21;
 constexpr uint8_t PIN_SCL = 22;
 constexpr uint8_t PIN_FSR = 34;  // FSR na tira (no Wokwi, o potenciômetro "fsr")
@@ -23,6 +30,9 @@ constexpr uint8_t PIN_MOTOR = 26;            // motor de vibração (no Wokwi, o
 constexpr uint8_t INTENSIDADE_MOTOR = 200;   // 0 a 255: duty do PWM com o motor ligado
 constexpr uint32_t FREQ_PWM_MOTOR_HZ = 5000;
 constexpr uint8_t CANAL_PWM_MOTOR = 0;       // usado só pelo core 2.x da ESP32
+constexpr uint8_t PIN_BATERIA = 35;          // divisor 2 × 100 kΩ (no Wokwi, o potenciômetro "bateria")
+constexpr float BATERIA_VAZIA_MV = 3300.0f;  // LiPo considerada vazia (aproximação linear)
+constexpr float BATERIA_CHEIA_MV = 4200.0f;  // LiPo cheia
 constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
 constexpr float DT_S = PERIODO_US / 1000000.0f;
 
@@ -31,10 +41,27 @@ constexpr float DT_S = PERIODO_US / 1000000.0f;
 const Prescricao PRESCRICAO_TESTE = {"sim001", 3, 10, 60.0f, 150.0f,
                                      (uint16_t)(USAR_SINAL_SIMULADO ? 10 : 60)};
 
+// ===== Comunicação (contrato MQTT v1.1) =====
+const char MQTT_HOST[] = "z2f0d126.ala.eu-central-1.emqxsl.com";
+constexpr uint16_t MQTT_PORTA = 8883;                 // MQTT sobre TLS
+const char MQTT_CLIENT_ID[] = "caneleira-01";         // único por conexão
+const char TOPICO_ESTADO[] = "imrea/g01/caneleira/estado";
+const char ESTADO_OFFLINE[] = "{\"online\":false}";   // last will, retido
+// O broker conta o tempo real, e o Wokwi roda a cerca de 50% dele: no simulador, o estado
+// sai mais vezes e o keepalive é maior, para o broker não dar a caneleira por desconectada.
+constexpr uint32_t ESTADO_PERIODO_MS = NO_WOKWI ? 20000 : 60000;  // contrato: a cada 60 s
+constexpr uint16_t MQTT_KEEPALIVE_S = NO_WOKWI ? 60 : 15;
+constexpr uint32_t RECONEXAO_MIN_MS = 2000;           // espera entre tentativas: 2 s...
+constexpr uint32_t RECONEXAO_MAX_MS = 30000;          // ...dobrando até 30 s
+
 Adafruit_MPU6050 imu;
 Caneleira caneleira;
 DetectorUso detectorUso;
 Biofeedback vibracao;
+WiFiClientSecure clienteTls;
+PubSubClient mqtt(clienteTls);
+bool estadoPendente = false;  // algo mudou: publicar estado na próxima volta
+uint32_t ultimoEstadoMs = 0;
 GeradorSimulado gerador = {12345u, 0.0f};
 uint32_t proximaLeituraUs = 0;
 uint32_t amostras = 0;
@@ -64,6 +91,7 @@ bool usoEfetivo() {
   const bool agora = atualizarUso(detectorUso, analogReadMilliVolts(PIN_FSR));
   if (agora != antes) {
     Serial.println(agora ? "Caneleira presa a perna." : "Caneleira solta: movimentos nao serao contados.");
+    estadoPendente = true;
   }
   return agora;
 }
@@ -104,6 +132,88 @@ void sinalizar(Padrao padrao, const char* descricao) {
   Serial.printf("  [vibracao] %s\n", descricao);
 }
 
+// Inicia a conexão Wi-Fi sem esperar por ela; o loop() acompanha o resultado.
+void iniciarWifi() {
+  if (!USAR_REDE) return;
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_SENHA);
+  Serial.printf("Wi-Fi: conectando a %s...\n", WIFI_SSID);
+}
+
+// Avisa no monitor quando o Wi-Fi conecta ou cai; a própria ESP32 tenta reconectar.
+void acompanharWifi() {
+  if (!USAR_REDE) return;
+  static bool conectadoAntes = false;
+  const bool conectado = WiFi.status() == WL_CONNECTED;
+  if (conectado == conectadoAntes) return;
+  conectadoAntes = conectado;
+  if (conectado) {
+    Serial.printf("Wi-Fi conectado: IP %s, sinal %d dBm.\n", WiFi.localIP().toString().c_str(),
+                  (int)WiFi.RSSI());
+  } else {
+    Serial.println("Wi-Fi desconectado; a ESP32 tenta reconectar sozinha.");
+  }
+}
+
+// Nível da bateria em %, pela tensão do divisor (metade da tensão da LiPo).
+uint8_t nivelBateria() {
+  const float bateriaMv = 2.0f * analogReadMilliVolts(PIN_BATERIA);
+  const float fracao = (bateriaMv - BATERIA_VAZIA_MV) / (BATERIA_CHEIA_MV - BATERIA_VAZIA_MV);
+  if (fracao <= 0) return 0;
+  if (fracao >= 1) return 100;
+  return (uint8_t)(fracao * 100 + 0.5f);
+}
+
+// Publica o estado (retido): conexão, bateria, sinal, uso e sessão em andamento.
+void publicarEstado() {
+  const bool temSessao = caneleira.sessao.status != StatusSessao::AGUARDANDO;
+  const bool emUso = !USAR_FSR || detectorUso.emUso;
+  char json[128];
+  snprintf(json, sizeof(json), "{\"online\":true,\"bat\":%u,\"rssi\":%d,\"uso\":%s,\"sid\":%s%s%s}",
+           (unsigned)nivelBateria(), (int)WiFi.RSSI(), emUso ? "true" : "false",
+           temSessao ? "\"" : "", temSessao ? caneleira.sessao.p.sid : "null", temSessao ? "\"" : "");
+  mqtt.publish(TOPICO_ESTADO, json, true);
+  ultimoEstadoMs = millis();
+  estadoPendente = false;
+  Serial.printf("MQTT: estado -> %s\n", json);
+}
+
+// Conecta ao broker por TLS, deixando registrado o aviso de desconexão (last will).
+bool conectarBroker() {
+  Serial.println("MQTT: conectando ao broker...");
+  if (!mqtt.connect(MQTT_CLIENT_ID, MQTT_USUARIO, MQTT_SENHA, TOPICO_ESTADO, 0, true, ESTADO_OFFLINE)) {
+    Serial.printf("MQTT: falha na conexao (codigo %d).\n", mqtt.state());
+    return false;
+  }
+  Serial.println("MQTT: conectado.");
+  publicarEstado();
+  return true;
+}
+
+// Mantém a conexão com o broker. A conexão TLS trava a ESP32 por 1 a 2 s, então só é
+// tentada fora de uma série, com espera crescente entre tentativas (2 s a 30 s).
+void atualizarComunicacao() {
+  if (!USAR_REDE || WiFi.status() != WL_CONNECTED) return;
+
+  if (mqtt.connected()) {
+    mqtt.loop();
+    if (estadoPendente || millis() - ultimoEstadoMs >= ESTADO_PERIODO_MS) publicarEstado();
+    return;
+  }
+
+  static uint32_t proximaTentativaMs = 0;
+  static uint32_t esperaMs = RECONEXAO_MIN_MS;
+  if ((int32_t)(millis() - proximaTentativaMs) < 0) return;
+  if (caneleira.sessao.status == StatusSessao::EM_EXECUCAO) return;  // não interrompe a série
+
+  if (conectarBroker()) {
+    esperaMs = RECONEXAO_MIN_MS;
+  } else {
+    esperaMs = (esperaMs * 2 > RECONEXAO_MAX_MS) ? RECONEXAO_MAX_MS : esperaMs * 2;
+  }
+  proximaTentativaMs = millis() + esperaMs;
+}
+
 // Imprime o resumo acumulado da sessão, como será publicado em sessao/<sid> no P10.
 void publicarResumo() {
   static char json[1024];
@@ -132,6 +242,7 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
                   s.p.sid, (unsigned)s.p.series, (unsigned)s.p.reps, s.p.admMin, s.p.velMax,
                   (unsigned)s.p.descanso);
     Serial.println("Serie 1 iniciada.");
+    estadoPendente = true;
   }
   if (ev & EV_REP_SEM_USO) Serial.println("Movimento ignorado: caneleira fora da perna.");
 
@@ -160,6 +271,12 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
 void setup() {
   Serial.begin(115200);
   iniciarMotor();
+  iniciarWifi();
+  clienteTls.setCACert(CERTIFICADO_CA_EMQX);
+  mqtt.setServer(MQTT_HOST, MQTT_PORTA);
+  mqtt.setBufferSize(1024);   // o resumo de três séries passa de 400 bytes
+  mqtt.setSocketTimeout(5);   // limita a espera numa conexão que não responde
+  mqtt.setKeepAlive(MQTT_KEEPALIVE_S);
 
   if (!USAR_SINAL_SIMULADO) {
     Wire.begin(PIN_SDA, PIN_SCL);
@@ -174,8 +291,8 @@ void setup() {
   }
 
   iniciarCaneleira(caneleira, PRESCRICAO_TESTE);
-  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P9 - modo SIMULADO (repeticoes ficticias)."
-                                     : "Caneleira P9 - MPU-6050 real.");
+  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P10 - modo SIMULADO (repeticoes ficticias)."
+                                     : "Caneleira P10 - MPU-6050 real.");
   Serial.println("Calibrando o giroscopio: mantenha a perna parada por 2 s...");
   proximaLeituraUs = micros() + PERIODO_US;
 }
@@ -183,6 +300,8 @@ void setup() {
 // Amostra a 100 Hz sem bloquear e entrega cada leitura ao processamento.
 void loop() {
   atualizarMotor();
+  acompanharWifi();
+  atualizarComunicacao();
 
   const uint32_t agoraUs = micros();
   if ((int32_t)(agoraUs - proximaLeituraUs) < 0) return;

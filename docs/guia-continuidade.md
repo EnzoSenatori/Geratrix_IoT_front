@@ -353,6 +353,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 **P10 — MQTT**
 - **Fazer:** Wi-Fi e PubSubClient com *last will* em `estado`; receber o `cmd`, validá-lo e gravá-lo em Preferences; publicar `sessao` acumulada ao fim de cada série; retentar até receber o `ack`; reconexão não bloqueante.
 - **Pronto quando**, simulando o app no MQTT Explorer: o `cmd` enviado é aplicado; a série executada aparece em `sessao`; derrubar o Wi-Fi no meio da sessão e religá-lo entrega tudo; desligar o ESP32 faz `estado` virar `{"online":false}`.
+- **Situação (parte 1, 02/11/2026):** Wi-Fi não bloqueante, conexão TLS ao broker novo (`z2f0d126`), *last will* `{"online":false}` retido e `estado` no formato do contrato verificados no Wokwi e no MQTTX; a conexão durou a sessão inteira sem quedas. Decisão de arquitetura: a conexão TLS, que trava a ESP32 por 1 a 2 s, só é tentada fora de uma série, com espera de 2 s a 30 s entre tentativas; a contagem nunca é interrompida pela rede. No Wokwi, que roda a cerca de 50% do tempo real, `estado` sai a cada 20 s e o keepalive é de 60 s (`NO_WOKWI`); na placa real, 60 s e 15 s. Falta a parte 2: receber o `cmd`, publicar `sessao/<sid>`, tratar o `ack` e limpar a mensagem retida.
 
 **P11 — Operação com o celular desligado**
 - **Fazer:** sem rede ou sem broker, a sessão roda com a última prescrição salva; os resumos ficam na memória não volátil até o `ack`.
