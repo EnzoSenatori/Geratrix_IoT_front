@@ -330,7 +330,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 - **Fazer:** implementar os estados e limiares com histerese da seção 6.4; calibrar θ_início, δ e θ_fim; testar 20 repetições contra contagem manual e os casos-limite: repetição incompleta, tremor no topo, pausa no topo.
 - **Pronto quando:** 20 de 20 repetições contadas, sem dupla contagem, e repetição incompleta não aparece como válida.
 - **Para o relatório:** diagrama de estados e limiares finais.
-- **Situação:** implementado em 01/11/2026, com um estado adicional, FINALIZANDO: a repetição só é contada quando a descida termina. Se o ângulo voltar a passar do pico, a subida é retomada sem nova contagem. Em simulação, 30 de 30 repetições foram contadas, sem dupla contagem com tremor ou pausa no topo, e as incompletas saíram como fora do padrão. Limiares ainda a calibrar em bancada.
+- **Situação:** implementado em 01/11/2026, com um estado adicional, FINALIZANDO: a repetição só é contada quando a descida termina. Se o ângulo voltar a passar do pico, a subida é retomada sem nova contagem. Em simulação, 30 de 30 repetições foram contadas, sem dupla contagem com tremor ou pausa no topo, e as incompletas saíram como fora do padrão. Limiares ainda a calibrar em bancada. Correção de 02/11/2026: depois de reiniciado (fim do descanso), o detector só aceita nova repetição ao ver a perna abaixo de 10°; antes, uma descida em curso no fim do descanso era contada com ADM 0. Coberto por teste no computador.
 
 **P7 — Métricas e classificação**
 - **Fazer:** calcular ADM, velocidade de pico e durações das fases; classificar contra uma prescrição fixa provisória (3 × 10, ADM mínima de 60°, velocidade máxima de 150 °/s, descanso de 60 s); ao fim de cada série, imprimir o resumo em JSON no formato exato do contrato.
@@ -348,6 +348,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 **P9 — Biofeedback**
 - **Fazer:** motor pelo NPN, com base em 1 kΩ, diodo 1N4148 em antiparalelo e GPIO 26 em PWM (LEDC); implementar os quatro padrões da seção 6.4 de forma **não bloqueante**.
 - **Pronto quando:** os quatro padrões são distinguíveis de olhos fechados, e a amostragem não perde ciclos durante a vibração.
+- **Situação:** implementado em 02/11/2026 (`biofeedback.h`) e verificado no Wokwi com um LED no GPIO 26: os quatro padrões apareceram nos momentos certos, e a sessão simulada terminou com o mesmo resultado de antes (7 válidas, 2 desvios de ADM e 1 de velocidade por série). Pendentes: medir o contador de atrasos durante a vibração (`IMPRIMIR_ANGULO = true`) e, com o motor real, confirmar a distinção dos padrões na perna e ajustar intensidade e tempos.
 
 **P10 — MQTT**
 - **Fazer:** Wi-Fi e PubSubClient com *last will* em `estado`; receber o `cmd`, validá-lo e gravá-lo em Preferences; publicar `sessao` acumulada ao fim de cada série; retentar até receber o `ack`; reconexão não bloqueante.

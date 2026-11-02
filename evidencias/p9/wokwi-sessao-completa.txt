@@ -1,0 +1,90 @@
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:1156
+load:0x40078000,len:11456
+ho 0 tail 12 room 4
+load:0x40080400,len:2972
+entry 0x400805dc
+Caneleira P9 - modo SIMULADO (repeticoes ficticias).
+Calibrando o giroscopio: mantenha a perna parada por 2 s...
+Caneleira presa a perna.
+Offset do giroscopio: 1.71 graus/s.
+Sessao sim001 iniciada: 3 series x 10 reps, ADM min 60 graus, vel max 150 graus/s, descanso 10 s.
+Serie 1 iniciada.
+Serie 1, rep  1/10 | ADM  69.6 | vel  78.7 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  2/10 | ADM  68.0 | vel  71.4 graus/s | sobe 1.4 s | desce 1.6 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  3/10 | ADM  73.7 | vel  80.9 graus/s | sobe 1.7 s | desce 2.0 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  4/10 | ADM  45.1 | vel  59.2 graus/s | sobe 1.1 s | desce 1.2 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 1, rep  5/10 | ADM  70.2 | vel  78.8 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  6/10 | ADM  66.1 | vel  74.3 graus/s | sobe 1.3 s | desce 1.4 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  7/10 | ADM  71.2 | vel  74.5 graus/s | sobe 1.4 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  8/10 | ADM  50.2 | vel  60.6 graus/s | sobe 1.2 s | desce 1.3 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 1, rep  9/10 | ADM  69.8 | vel 220.1 graus/s | sobe 0.5 s | desce 0.9 s | FORA (vel)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 1, rep 10/10 | ADM  69.0 | vel  77.7 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+  [vibracao] 3 pulsos curtos - fim de serie
+sessao/sim001 -> {"sid":"sim001","status":"descanso","series":[{"n":1,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+Descanso de 10 s.
+  [vibracao] 1 pulso longo - fim do descanso
+Serie 2 iniciada.
+Serie 2, rep  1/10 | ADM  70.2 | vel  78.8 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  2/10 | ADM  68.1 | vel  71.4 graus/s | sobe 1.4 s | desce 1.6 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  3/10 | ADM  73.6 | vel  80.9 graus/s | sobe 1.7 s | desce 1.9 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  4/10 | ADM  45.1 | vel  59.0 graus/s | sobe 1.1 s | desce 1.2 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 2, rep  5/10 | ADM  70.2 | vel  78.8 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  6/10 | ADM  66.1 | vel  74.2 graus/s | sobe 1.3 s | desce 1.4 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  7/10 | ADM  70.9 | vel  74.6 graus/s | sobe 1.4 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  8/10 | ADM  50.0 | vel  60.7 graus/s | sobe 1.2 s | desce 1.3 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 2, rep  9/10 | ADM  69.8 | vel 220.1 graus/s | sobe 0.5 s | desce 0.9 s | FORA (vel)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 2, rep 10/10 | ADM  69.1 | vel  77.7 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+  [vibracao] 3 pulsos curtos - fim de serie
+sessao/sim001 -> {"sid":"sim001","status":"descanso","series":[{"n":1,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5},{"n":2,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+Descanso de 10 s.
+  [vibracao] 1 pulso longo - fim do descanso
+Serie 3 iniciada.
+Serie 3, rep  1/10 | ADM  70.1 | vel  78.7 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 3, rep  2/10 | ADM  68.1 | vel  71.3 graus/s | sobe 1.4 s | desce 1.6 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 3, rep  3/10 | ADM  73.7 | vel  80.7 graus/s | sobe 1.7 s | desce 2.0 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 3, rep  4/10 | ADM  45.1 | vel  59.0 graus/s | sobe 1.1 s | desce 1.2 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 3, rep  5/10 | ADM  70.1 | vel  78.8 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 3, rep  6/10 | ADM  65.9 | vel  74.2 graus/s | sobe 1.3 s | desce 1.4 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 3, rep  7/10 | ADM  71.1 | vel  74.6 graus/s | sobe 1.4 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 3, rep  8/10 | ADM  49.9 | vel  60.6 graus/s | sobe 1.2 s | desce 1.3 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 3, rep  9/10 | ADM  69.8 | vel 220.0 graus/s | sobe 0.5 s | desce 0.9 s | FORA (vel)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 3, rep 10/10 | ADM  69.0 | vel  77.6 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+  [vibracao] 3 pulsos curtos - fim de serie
+sessao/sim001 -> {"sid":"sim001","status":"concluida","series":[{"n":1,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5},{"n":2,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5},{"n":3,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.0,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+Sessao concluida.

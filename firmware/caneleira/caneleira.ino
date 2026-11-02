@@ -1,4 +1,4 @@
-// Caneleira instrumentada — firmware da ESP32 (P3 a P8).
+// Caneleira instrumentada — firmware da ESP32 (P3 a P9).
 // Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
 // ao fim de cada série, imprime o resumo no formato do tópico sessao/<sid> do contrato.
 // Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
@@ -8,6 +8,7 @@
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 
+#include "biofeedback.h"
 #include "processamento.h"
 #include "sinal_simulado.h"
 
@@ -18,6 +19,10 @@ constexpr uint8_t PIN_SDA = 21;
 constexpr uint8_t PIN_SCL = 22;
 constexpr uint8_t PIN_FSR = 34;  // FSR na tira (no Wokwi, o potenciômetro "fsr")
 constexpr bool USAR_FSR = true;  // false: considera a caneleira sempre presa
+constexpr uint8_t PIN_MOTOR = 26;            // motor de vibração (no Wokwi, o LED "motor")
+constexpr uint8_t INTENSIDADE_MOTOR = 200;   // 0 a 255: duty do PWM com o motor ligado
+constexpr uint32_t FREQ_PWM_MOTOR_HZ = 5000;
+constexpr uint8_t CANAL_PWM_MOTOR = 0;       // usado só pelo core 2.x da ESP32
 constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
 constexpr float DT_S = PERIODO_US / 1000000.0f;
 
@@ -29,6 +34,7 @@ const Prescricao PRESCRICAO_TESTE = {"sim001", 3, 10, 60.0f, 150.0f,
 Adafruit_MPU6050 imu;
 Caneleira caneleira;
 DetectorUso detectorUso;
+Biofeedback vibracao;
 GeradorSimulado gerador = {12345u, 0.0f};
 uint32_t proximaLeituraUs = 0;
 uint32_t amostras = 0;
@@ -62,9 +68,40 @@ bool usoEfetivo() {
   return agora;
 }
 
-// Registra o padrão de vibração do evento; o motor real entra no P9.
-void sinalizar(const char* padrao, const char* motivo) {
-  Serial.printf("  [vibracao] %s - %s\n", padrao, motivo);
+// Configura o PWM do motor (LEDC); a forma de configurar mudou na versão 3 do core.
+void iniciarMotor() {
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcAttach(PIN_MOTOR, FREQ_PWM_MOTOR_HZ, 8);
+#else
+  ledcSetup(CANAL_PWM_MOTOR, FREQ_PWM_MOTOR_HZ, 8);
+  ledcAttachPin(PIN_MOTOR, CANAL_PWM_MOTOR);
+#endif
+}
+
+// Liga o motor na intensidade configurada, ou desliga.
+void acionarMotor(bool ligado) {
+  const uint32_t duty = ligado ? INTENSIDADE_MOTOR : 0;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  ledcWrite(PIN_MOTOR, duty);
+#else
+  ledcWrite(CANAL_PWM_MOTOR, duty);
+#endif
+}
+
+// Aplica no pino o que a fila de vibração pede neste instante, só quando isso muda.
+void atualizarMotor() {
+  static bool ligadoAntes = false;
+  const bool ligado = atualizarBiofeedback(vibracao, millis());
+  if (ligado != ligadoAntes) {
+    acionarMotor(ligado);
+    ligadoAntes = ligado;
+  }
+}
+
+// Põe o padrão na fila do motor e registra no monitor; o motor toca sem bloquear.
+void sinalizar(Padrao padrao, const char* descricao) {
+  pedirPadrao(vibracao, padrao);
+  Serial.printf("  [vibracao] %s\n", descricao);
 }
 
 // Imprime o resumo acumulado da sessão, como será publicado em sessao/<sid> no P10.
@@ -104,16 +141,16 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
                   "desce %.1f s | %s\n",
                   (unsigned)r.n, (unsigned)r.total, (unsigned)s.p.reps, rep.adm, rep.velPico,
                   rep.tConc, rep.tExc, textoResultado(rep));
-    if (rep.valida) sinalizar("1 pulso curto", "repeticao valida");
-    else sinalizar("2 pulsos curtos", "repeticao fora do padrao");
+    if (rep.valida) sinalizar(Padrao::REP_VALIDA, "1 pulso curto - repeticao valida");
+    else sinalizar(Padrao::REP_FORA, "2 pulsos curtos - repeticao fora do padrao");
   }
   if (ev & EV_FIM_SERIE) {
-    sinalizar("3 pulsos curtos", "fim de serie");
+    sinalizar(Padrao::FIM_SERIE, "3 pulsos curtos - fim de serie");
     publicarResumo();
     if (!(ev & EV_SESSAO_CONCLUIDA)) Serial.printf("Descanso de %u s.\n", (unsigned)s.p.descanso);
   }
   if (ev & EV_FIM_DESCANSO) {
-    sinalizar("1 pulso longo", "fim do descanso");
+    sinalizar(Padrao::FIM_DESCANSO, "1 pulso longo - fim do descanso");
     Serial.printf("Serie %u iniciada.\n", (unsigned)(s.serie + 1));
   }
   if (ev & EV_SESSAO_CONCLUIDA) Serial.println("Sessao concluida.");
@@ -122,6 +159,7 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
 // Inicializa o monitor serial, o sensor (no modo real) e o processamento.
 void setup() {
   Serial.begin(115200);
+  iniciarMotor();
 
   if (!USAR_SINAL_SIMULADO) {
     Wire.begin(PIN_SDA, PIN_SCL);
@@ -136,14 +174,16 @@ void setup() {
   }
 
   iniciarCaneleira(caneleira, PRESCRICAO_TESTE);
-  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P7 - modo SIMULADO (repeticoes ficticias)."
-                                     : "Caneleira P7 - MPU-6050 real.");
+  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P9 - modo SIMULADO (repeticoes ficticias)."
+                                     : "Caneleira P9 - MPU-6050 real.");
   Serial.println("Calibrando o giroscopio: mantenha a perna parada por 2 s...");
   proximaLeituraUs = micros() + PERIODO_US;
 }
 
 // Amostra a 100 Hz sem bloquear e entrega cada leitura ao processamento.
 void loop() {
+  atualizarMotor();
+
   const uint32_t agoraUs = micros();
   if ((int32_t)(agoraUs - proximaLeituraUs) < 0) return;
 

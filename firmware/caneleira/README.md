@@ -1,6 +1,6 @@
 # Firmware da caneleira
 
-**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) foi verificado no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR. Nada foi testado ainda na placa real.
+**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. Nada foi testado ainda na placa real.
 
 ## Arquivos
 
@@ -9,6 +9,7 @@
 | `caneleira.ino` | Configuração, leitura (simulada ou real), impressão dos eventos e biofeedback provisório |
 | `processamento.h` | Lógica sem dependência do Arduino: calibração do giroscópio, filtro complementar, máquina de estados, classificação, séries e JSON |
 | `sinal_simulado.h` | Gerador de repetições fictícias com resultado conhecido |
+| `biofeedback.h` | Padrões de vibração tocados sem bloquear a amostragem (lógica pura) |
 | `certificado_ca.h` | Certificado raiz público do broker (DigiCert Global Root G2, válido até 2038), para a conexão TLS no P10 |
 | `diagram.json`, `libraries.txt` | Circuito e bibliotecas do projeto Wokwi |
 
@@ -30,7 +31,7 @@ Os GPIOs 34 e 35 estão no ADC1, o único utilizável com o Wi-Fi ligado; o 33 p
 
 1. Abra o [projeto P3 no Wokwi](https://wokwi.com/projects/477822826125465601), use **Save a copy** para ter a sua cópia e substitua o `diagram.json` pelo desta pasta.
 2. Substitua todo o conteúdo de `sketch.ino` pelo de `caneleira.ino`.
-3. Crie os arquivos `processamento.h` e `sinal_simulado.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes.
+3. Crie os arquivos `processamento.h`, `sinal_simulado.h` e `biofeedback.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes.
 4. Clique em ▶. As alterações não precisam ser salvas para rodar.
 
 Com `USAR_SINAL_SIMULADO = true`, o sensor virtual é ignorado e o firmware processa o roteiro fictício. A primeira série termina em cerca de 45 s, e a sessão completa, em menos de 3 min.
@@ -68,11 +69,13 @@ O gerador acrescenta ruído ao acelerômetro e ao giroscópio e um offset de 1,7
 - **Fases:** concêntrica é o tempo com ω acima de +10 °/s; excêntrica, o tempo abaixo de −10 °/s. Pausas no topo ficam fora das duas.
 - **Classificação:** válida se ADM ≥ `adm_min` e velocidade de pico ≤ `vel_max`. Uma repetição pode ter os dois desvios. Sem uso efetivo durante toda a repetição, o movimento não é contado.
 - **Uso efetivo:** tensão do divisor do FSR no GPIO 34, com histerese: presa a partir de 1,2 V, solta abaixo de 0,8 V; entre os dois, mantém o estado. Valores provisórios. Com `USAR_FSR = false`, a caneleira é considerada sempre presa.
+- **Reinício do detector:** depois de um descanso, uma nova repetição só é aceita quando a perna é vista em repouso (abaixo de 10°); assim, a descida em curso no fim do descanso não vira repetição.
+- **Biofeedback:** 1 pulso curto para repetição válida, 2 para fora do padrão, 3 no fim da série e 1 longo no fim do descanso; pulsos de 150 ms (longo, 600 ms), 150 ms entre pulsos e 500 ms entre padrões. Os padrões entram numa fila e tocam pelo PWM do GPIO 26, consultando `millis()` a cada volta do `loop()`, sem `delay()`.
 - **Resumo da série (a validar com o Rafael):** `adm_media`, `t_conc` e `t_exc` são médias de todas as repetições; `vel_pico` é o máximo da série; `status` vale `descanso` entre séries e `concluida` ao final; `ts` é `null` até haver hora de rede.
 
 ## Constantes a calibrar em bancada
 
-Ficam no topo de `processamento.h`: `ALFA_FILTRO`, `THETA_INICIO_GRAUS`, `DELTA_PICO_GRAUS`, `THETA_FIM_GRAUS`, `OMEGA_MOVIMENTO_GRAUS_S`, `AMOSTRAS_CALIBRACAO`, `SINAL_GIRO`, `USO_LIGA_MV` e `USO_DESLIGA_MV`. Os eixos de `anguloAcelerometro()` e o sinal do giroscópio são provisórios e devem ser confirmados no P4, com a placa presa à caneleira.
+Ficam no topo de `processamento.h`: `ALFA_FILTRO`, `THETA_INICIO_GRAUS`, `DELTA_PICO_GRAUS`, `THETA_FIM_GRAUS`, `OMEGA_MOVIMENTO_GRAUS_S`, `AMOSTRAS_CALIBRACAO`, `SINAL_GIRO`, `USO_LIGA_MV` e `USO_DESLIGA_MV`; no topo de `biofeedback.h`, as constantes `VIB_...`; no `caneleira.ino`, `INTENSIDADE_MOTOR`. Os eixos de `anguloAcelerometro()` e o sinal do giroscópio são provisórios e devem ser confirmados no P4, com a placa presa à caneleira.
 
 ## Teste no computador
 
@@ -89,7 +92,8 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 
 - A simulação não reproduz a aceleração linear do movimento, que existirá na placa real e pode exigir outro α.
 - A prescrição é fixa (`PRESCRICAO_TESTE`) até o P10 recebê-la pelo tópico `cmd`; no modo simulado, o descanso é de 10 s.
-- A vibração é apenas impressa (P9) e nada é publicado no broker (P10).
+- Nada é publicado no broker ainda (P10).
+- A vibração foi vista num LED; a distinção dos padrões na perna e a intensidade dependem do motor real.
 - O FSR é simulado por um potenciômetro; os limiares de uso ainda não foram medidos.
 - O roteiro simulado se repete sem fim, para que repetições descartadas num teste não esgotem o movimento.
 - O resumo de três séries tem 412 bytes, acima do buffer padrão de 256 bytes da PubSubClient; o P10 deve ampliá-lo.
