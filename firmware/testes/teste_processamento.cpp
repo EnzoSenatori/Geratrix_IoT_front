@@ -66,6 +66,12 @@ int main() {
                   r.desviosAdm == ESPERADO_ADM && r.desviosVel == ESPERADO_VEL,
               d);
   }
+  // Uso efetivo: liga acima de 1,2 V, desliga abaixo de 0,8 V, mantém o estado entre eles.
+  DetectorUso u{};
+  const bool histereseOk = atualizarUso(u, 1300) && atualizarUso(u, 1000) && !atualizarUso(u, 700) &&
+                           !atualizarUso(u, 1100) && atualizarUso(u, 1250);
+  verificar(histereseOk, "histerese do uso efetivo (liga 1,2 V, desliga 0,8 V)");
+
   printf("\n%s\n", falhas == 0 ? "RESULTADO: todas as verificacoes passaram." : "RESULTADO: ha falhas.");
   return falhas == 0 ? 0 : 1;
 }

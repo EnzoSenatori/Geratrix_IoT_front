@@ -1,4 +1,4 @@
-// Caneleira instrumentada — firmware da ESP32 (P3 a P7).
+// Caneleira instrumentada — firmware da ESP32 (P3 a P8).
 // Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
 // ao fim de cada série, imprime o resumo no formato do tópico sessao/<sid> do contrato.
 // Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
@@ -16,6 +16,8 @@ constexpr bool USAR_SINAL_SIMULADO = true;  // false para usar a MPU-6050 real
 constexpr bool IMPRIMIR_ANGULO = false;     // true: ângulos a 10 Hz, útil no P4 e no P5
 constexpr uint8_t PIN_SDA = 21;
 constexpr uint8_t PIN_SCL = 22;
+constexpr uint8_t PIN_FSR = 34;  // FSR na tira (no Wokwi, o potenciômetro "fsr")
+constexpr bool USAR_FSR = true;  // false: considera a caneleira sempre presa
 constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
 constexpr float DT_S = PERIODO_US / 1000000.0f;
 
@@ -26,6 +28,7 @@ const Prescricao PRESCRICAO_TESTE = {"sim001", 3, 10, 60.0f, 150.0f,
 
 Adafruit_MPU6050 imu;
 Caneleira caneleira;
+DetectorUso detectorUso;
 GeradorSimulado gerador = {12345u, 0.0f};
 uint32_t proximaLeituraUs = 0;
 uint32_t amostras = 0;
@@ -48,9 +51,15 @@ bool obterLeitura(AmostraImu& a) {
   return true;
 }
 
-// Indica se a caneleira está presa à perna; o FSR entra no P8, até lá sempre verdadeiro.
+// Lê o FSR e informa se a caneleira está presa à perna, avisando quando isso muda.
 bool usoEfetivo() {
-  return true;
+  if (!USAR_FSR) return true;
+  const bool antes = detectorUso.emUso;
+  const bool agora = atualizarUso(detectorUso, analogReadMilliVolts(PIN_FSR));
+  if (agora != antes) {
+    Serial.println(agora ? "Caneleira presa a perna." : "Caneleira solta: movimentos nao serao contados.");
+  }
+  return agora;
 }
 
 // Registra o padrão de vibração do evento; o motor real entra no P9.

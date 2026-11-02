@@ -71,6 +71,23 @@ inline float atualizarFiltro(FiltroComplementar& f, float thetaAcc, float omega,
   return f.theta;
 }
 
+// ===== Uso efetivo (FSR na tira de fixação) =====
+
+// Limiares provisórios, em mV no GPIO 34; medir com o FSR real (caneleira presa e solta).
+constexpr float USO_LIGA_MV = 1200.0f;     // acima disto: tira pressionada, caneleira presa
+constexpr float USO_DESLIGA_MV = 800.0f;   // abaixo disto: caneleira solta
+
+struct DetectorUso {
+  bool emUso;
+};
+
+// Atualiza o estado de uso com histerese: entre os dois limiares, mantém o estado anterior.
+inline bool atualizarUso(DetectorUso& u, float milivolts) {
+  if (!u.emUso && milivolts >= USO_LIGA_MV) u.emUso = true;
+  else if (u.emUso && milivolts <= USO_DESLIGA_MV) u.emUso = false;
+  return u.emUso;
+}
+
 // ===== Detecção da repetição (máquina de estados com histerese) =====
 
 // REPOUSO -> SUBINDO ao passar de THETA_INICIO; SUBINDO -> DESCENDO ao cair DELTA_PICO

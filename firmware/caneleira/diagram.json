@@ -3,30 +3,32 @@
   "author": "Projeto Caneleira g01",
   "editor": "wokwi",
   "parts": [
-    {
-      "type": "wokwi-esp32-devkit-v1",
-      "id": "esp",
-      "top": 0,
-      "left": 0,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-mpu6050",
-      "id": "imu",
-      "top": -25,
-      "left": 150,
-      "attrs": {}
-    }
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-mpu6050", "id": "imu", "top": -25, "left": 150, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "fsr", "top": 180, "left": 160, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "bateria", "top": 180, "left": 260, "attrs": {} },
+    { "type": "wokwi-resistor", "id": "r_motor", "top": 60, "left": -130, "rotate": 0, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "motor", "top": 10, "left": -170, "attrs": { "color": "red" } },
+    { "type": "wokwi-pushbutton", "id": "botao", "top": 150, "left": -180, "attrs": { "color": "green" } }
   ],
   "connections": [
     ["esp:3V3", "imu:VCC", "red", []],
     ["esp:GND.1", "imu:GND", "black", []],
     ["esp:D21", "imu:SDA", "green", []],
     ["esp:D22", "imu:SCL", "blue", []],
+    ["esp:3V3", "fsr:VCC", "red", []],
+    ["esp:GND.1", "fsr:GND", "black", []],
+    ["esp:D34", "fsr:SIG", "orange", []],
+    ["esp:3V3", "bateria:VCC", "red", []],
+    ["esp:GND.1", "bateria:GND", "black", []],
+    ["esp:D35", "bateria:SIG", "purple", []],
+    ["esp:D26", "r_motor:2", "gold", []],
+    ["r_motor:1", "motor:A", "gold", []],
+    ["motor:C", "esp:GND.2", "black", []],
+    ["esp:D33", "botao:1.r", "green", []],
+    ["botao:2.r", "esp:GND.2", "black", []],
     ["esp:TX0", "$serialMonitor:RX", "", []],
     ["esp:RX0", "$serialMonitor:TX", "", []]
   ],
-  "serialMonitor": {
-    "display": "always"
-  }
+  "serialMonitor": { "display": "always" }
 }

@@ -1,6 +1,6 @@
 # Firmware da caneleira
 
-**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. Nada foi testado ainda na placa real.
+**Estado em 01/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) foi verificado no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR. Nada foi testado ainda na placa real.
 
 ## Arquivos
 
@@ -12,9 +12,23 @@
 | `certificado_ca.h` | Certificado raiz público do broker (DigiCert Global Root G2, válido até 2038), para a conexão TLS no P10 |
 | `diagram.json`, `libraries.txt` | Circuito e bibliotecas do projeto Wokwi |
 
+## Circuito no Wokwi
+
+O `diagram.json` traz o circuito completo da caneleira. Cada peça provisória está no pino definitivo do mapa do guia (seção 6.2): na placa real, troca-se a peça, não o código.
+
+| Peça no Wokwi | Representa | Pino | Na placa real |
+|---|---|---|---|
+| MPU-6050 | Sensor de movimento | GPIO 21 (SDA) e 22 (SCL) | MPU-6050 (GY-521) |
+| Potenciômetro `fsr` | Sensor de pressão na tira | GPIO 34 | FSR 402 com divisor de 10 kΩ |
+| Potenciômetro `bateria` | Tensão da bateria | GPIO 35 | Divisor de 2 × 100 kΩ ligado à LiPo |
+| LED `motor` + resistor de 220 Ω | Motor de vibração | GPIO 26 | Transistor NPN, diodo 1N4148 e motor de 3 V |
+| Botão `botao` | Início de série e despertar | GPIO 33 | Botão tátil de 12 mm ligado ao GND |
+
+Os GPIOs 34 e 35 estão no ADC1, o único utilizável com o Wi-Fi ligado; o 33 pode acordar a ESP32 do *deep sleep*.
+
 ## Como rodar no Wokwi
 
-1. Abra o [projeto P3 no Wokwi](https://wokwi.com/projects/477822826125465601). Ele já tem o circuito e as bibliotecas.
+1. Abra o [projeto P3 no Wokwi](https://wokwi.com/projects/477822826125465601), use **Save a copy** para ter a sua cópia e substitua o `diagram.json` pelo desta pasta.
 2. Substitua todo o conteúdo de `sketch.ino` pelo de `caneleira.ino`.
 3. Crie os arquivos `processamento.h` e `sinal_simulado.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes.
 4. Clique em ▶. As alterações não precisam ser salvas para rodar.
@@ -32,7 +46,7 @@ Serie 1, rep 10/10 | ADM  69.0 | vel  77.7 graus/s | sobe 1.3 s | desce 1.5 s | 
 sessao/sim001 -> {"sid":"sim001","status":"descanso","series":[{"n":1,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
 ```
 
-## Roteiro simulado (uma série, repetida três vezes)
+## Roteiro simulado (uma série, repetida sem fim)
 
 | Rep. | Caso | Amplitude | Subida | Resultado esperado |
 |---:|---|---:|---:|---|
@@ -52,12 +66,13 @@ O gerador acrescenta ruído ao acelerômetro e ao giroscópio e um offset de 1,7
 - **ADM:** pico menos o ângulo de repouso anterior à repetição.
 - **Velocidade de pico:** maior velocidade de subida medida pelo giroscópio.
 - **Fases:** concêntrica é o tempo com ω acima de +10 °/s; excêntrica, o tempo abaixo de −10 °/s. Pausas no topo ficam fora das duas.
-- **Classificação:** válida se ADM ≥ `adm_min` e velocidade de pico ≤ `vel_max`. Uma repetição pode ter os dois desvios. Sem uso efetivo, o movimento não é contado; até o P8, o uso é sempre verdadeiro.
+- **Classificação:** válida se ADM ≥ `adm_min` e velocidade de pico ≤ `vel_max`. Uma repetição pode ter os dois desvios. Sem uso efetivo durante toda a repetição, o movimento não é contado.
+- **Uso efetivo:** tensão do divisor do FSR no GPIO 34, com histerese: presa a partir de 1,2 V, solta abaixo de 0,8 V; entre os dois, mantém o estado. Valores provisórios. Com `USAR_FSR = false`, a caneleira é considerada sempre presa.
 - **Resumo da série (a validar com o Rafael):** `adm_media`, `t_conc` e `t_exc` são médias de todas as repetições; `vel_pico` é o máximo da série; `status` vale `descanso` entre séries e `concluida` ao final; `ts` é `null` até haver hora de rede.
 
 ## Constantes a calibrar em bancada
 
-Ficam no topo de `processamento.h`: `ALFA_FILTRO`, `THETA_INICIO_GRAUS`, `DELTA_PICO_GRAUS`, `THETA_FIM_GRAUS`, `OMEGA_MOVIMENTO_GRAUS_S`, `AMOSTRAS_CALIBRACAO` e `SINAL_GIRO`. Os eixos de `anguloAcelerometro()` e o sinal do giroscópio são provisórios e devem ser confirmados no P4, com a placa presa à caneleira.
+Ficam no topo de `processamento.h`: `ALFA_FILTRO`, `THETA_INICIO_GRAUS`, `DELTA_PICO_GRAUS`, `THETA_FIM_GRAUS`, `OMEGA_MOVIMENTO_GRAUS_S`, `AMOSTRAS_CALIBRACAO`, `SINAL_GIRO`, `USO_LIGA_MV` e `USO_DESLIGA_MV`. Os eixos de `anguloAcelerometro()` e o sinal do giroscópio são provisórios e devem ser confirmados no P4, com a placa presa à caneleira.
 
 ## Teste no computador
 
@@ -74,7 +89,9 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 
 - A simulação não reproduz a aceleração linear do movimento, que existirá na placa real e pode exigir outro α.
 - A prescrição é fixa (`PRESCRICAO_TESTE`) até o P10 recebê-la pelo tópico `cmd`; no modo simulado, o descanso é de 10 s.
-- A vibração é apenas impressa (P9), o FSR ainda não existe (P8) e nada é publicado no broker (P10).
+- A vibração é apenas impressa (P9) e nada é publicado no broker (P10).
+- O FSR é simulado por um potenciômetro; os limiares de uso ainda não foram medidos.
+- O roteiro simulado se repete sem fim, para que repetições descartadas num teste não esgotem o movimento.
 - O resumo de três séries tem 412 bytes, acima do buffer padrão de 256 bytes da PubSubClient; o P10 deve ampliá-lo.
 - O giroscópio está configurado até 250 °/s; acima disso, a leitura satura.
 

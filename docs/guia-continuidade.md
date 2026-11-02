@@ -341,6 +341,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 - **Fazer:** divisor com 10 kΩ no GPIO 34; levantar a faixa de leitura com a caneleira presa e solta; definir o limiar com histerese; impedir a contagem sem uso efetivo.
 - **Pronto quando:** balançar a caneleira na mão não gera repetições.
 - **Para o relatório:** faixa de leitura e limiar adotado.
+- **Situação:** implementado em 02/11/2026 e verificado no Wokwi, com um potenciômetro no GPIO 34 no lugar do FSR: com a caneleira "solta", os movimentos são ignorados, e a contagem retoma ao prender de novo. Histerese provisória: presa a partir de 1,2 V, solta abaixo de 0,8 V. Falta medir a faixa real do FSR e ajustar os limiares.
 
 ### Fase 3 — Atuação e conectividade
 
