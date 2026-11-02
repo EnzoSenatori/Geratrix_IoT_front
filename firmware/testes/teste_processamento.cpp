@@ -72,6 +72,18 @@ int main() {
                            !atualizarUso(u, 1100) && atualizarUso(u, 1250);
   verificar(histereseOk, "histerese do uso efetivo (liga 1,2 V, desliga 0,8 V)");
 
+  // Detector reiniciado com a perna no alto, como no fim de um descanso no meio de um
+  // movimento: a descida em curso não pode virar repetição.
+  DetectorRepeticao d;
+  reiniciarDetector(d, 60.0f);
+  Repeticao repReinicio;
+  bool contou = false;
+  for (int k = 0; k <= 100; k++) {  // desce de 60° a 0° em 1 s
+    contou = detectarRepeticao(d, 60.0f * (1 - k / 100.0f), -60.0f, DT, true, repReinicio) || contou;
+  }
+  for (int k = 0; k < 50; k++) contou = detectarRepeticao(d, 0.0f, 0.0f, DT, true, repReinicio) || contou;
+  verificar(!contou, "descida em curso ao reiniciar o detector nao vira repeticao");
+
   printf("\n%s\n", falhas == 0 ? "RESULTADO: todas as verificacoes passaram." : "RESULTADO: ha falhas.");
   return falhas == 0 ? 0 : 1;
 }

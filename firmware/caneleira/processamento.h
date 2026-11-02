@@ -115,6 +115,7 @@ struct DetectorRepeticao {
   float tConc, tExc;
   float tSubidaPre, velPre;  // subida iniciada ainda abaixo de THETA_INICIO
   bool usoContinuo;
+  bool armado;  // só aceita nova subida depois de ver a perna em repouso
 };
 
 // Volta o detector ao repouso, usando o ângulo atual como referência de partida.
@@ -123,6 +124,7 @@ inline void reiniciarDetector(DetectorRepeticao& d, float theta) {
   d.fase = Fase::REPOUSO;
   d.thetaMin = theta;
   d.usoContinuo = true;
+  d.armado = theta < THETA_FIM_GRAUS;
 }
 
 // Avança a máquina de estados com uma amostra; retorna true quando uma repetição termina.
@@ -133,6 +135,13 @@ inline bool detectarRepeticao(DetectorRepeticao& d, float theta, float omega, fl
 
   switch (d.fase) {
     case Fase::REPOUSO:
+      if (!d.armado) {  // reiniciado no meio de um movimento: espera a perna voltar ao repouso
+        if (theta < THETA_FIM_GRAUS) {
+          d.armado = true;
+          d.thetaMin = theta;
+        }
+        return false;
+      }
       if (theta < d.thetaMin) d.thetaMin = theta;
       if (subindo) {
         d.tSubidaPre += dt;
