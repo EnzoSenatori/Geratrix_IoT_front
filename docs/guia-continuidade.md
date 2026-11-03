@@ -38,7 +38,7 @@ Confirme em até cinco linhas o estado atual e o próximo passo do roteiro, faç
 |---|---|
 | Disciplina | Desenvolvimento IoT — Engenharia de Computação, Universidade Presbiteriana Mackenzie, 2026-2 |
 | Natureza | Projeto de extensão em parceria com o IMREA (Instituto de Medicina Física e Reabilitação) |
-| Grupo | Enzo Senatori, Rafael de Oliveira Corrêa e Theo Casella Mendonça |
+| Grupo | Enzo Senatori, Rafael de Oliveira Corrêa, Theo Casella Mendonça e Felipe |
 | Tema do enunciado | **Tema B — equipamento de fisioterapia instrumentado** (o Tema A era prótese instrumentada) |
 | Equipamento | Caneleira instrumentada para **extensão de joelho na posição sentada, com a coxa apoiada** |
 | Entrega final | **Banca em 20/11/2026** — demonstração, documentação e relatório de impacto |
@@ -119,6 +119,7 @@ Levantados do enunciado ao longo das conversas. Em caso de divergência com o en
 | D12 | Esforço percebido em três níveis (leve, moderado, intenso), informado pelo cuidador | O sensor não o mede; simples para quem registra |
 | D13 | Validação em bancada e com integrantes: goniômetro ou transferidor para o ângulo, contagem manual para as repetições | Limite ético do enunciado |
 | D14 | *Deep sleep* com despertar pelo botão; eletrônica em caixa presa à caneleira por velcro | Autonomia e montagem reversível |
+| D15 | Protótipo enxuto (02/11/2026): alimentação por power bank, pelo cabo USB da ESP32, e montagem em mini protoboard, sem bateria LiPo nem circuito soldado. Lista de materiais versão 1 em `docs/inventario-materiais.md` | Falta de tempo do grupo para solda e circuito de bateria. Consequências: `bat` deixa de ser medido (a combinar com o Rafael, pois está no contrato) e o power bank pode se desligar durante o *deep sleep* |
 
 ---
 
@@ -151,7 +152,7 @@ Levantados do enunciado ao longo das conversas. Em caso de divergência com o en
 | FSR | FSR 402 na tira de fixação | Uso efetivo | Pressão de contato com a perna |
 | Botão | Tátil 12 mm | Início/fim de série; despertar do *deep sleep* | Digital |
 | Motor de vibração | Tipo moeda, 3 V, acionado por NPN (BC337 ou 2N2222) com diodo 1N4148 | Biofeedback | Padrões de vibração por evento |
-| Alimentação | LiPo 3,7 V ~1000 mAh + TP4056 com proteção + LDO 3,3 V (ME6211 ou AP2112K) | Alimentação autônoma de baixa tensão | Nível de bateria (%) por divisor resistivo |
+| Alimentação | Power bank de 5000 mAh pelo USB (D15); antes, LiPo 3,7 V ~1000 mAh + TP4056 com proteção + LDO 3,3 V (ME6211 ou AP2112K) | Alimentação autônoma de baixa tensão | Com o power bank, o nível de bateria não é medido |
 
 ### 6.2 Mapa de pinos — **proposto, confirmar na bancada**
 
@@ -235,6 +236,8 @@ A cópia recebida em 12/10 é HTML e CSS estáticos, sem JavaScript, backend ou 
 ---
 
 ## 7. Materiais
+
+**Desde 02/11/2026 vale a lista de materiais versão 1, em `docs/inventario-materiais.md` (D15).** As listas abaixo ficam como referência da versão com bateria e solda.
 
 ### 7.1 Lista parcial — suficiente para começar
 
@@ -363,11 +366,12 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 ### Fase 4 — Autonomia e montagem
 
 **P12 — *Deep sleep* e cálculo de autonomia**
-- **Fazer:** *deep sleep* com despertar pelo botão (ext0, GPIO 33) **e por timer no fim do descanso** — sem o timer, o aviso de fim de descanso não acontece com o ESP32 dormindo. Guardar o estado da sessão em `RTC_DATA_ATTR` ou na memória não volátil, pois o *deep sleep* apaga a RAM. Medir com o multímetro a corrente em cada modo: dormindo, amostrando sem Wi-Fi, transmitindo.
+- **Fazer:** *deep sleep* com despertar pelo botão (ext0, GPIO 33) **e por timer no fim do descanso** — sem o timer, o aviso de fim de descanso não acontece com o ESP32 dormindo. Guardar o estado da sessão em `RTC_DATA_ATTR` ou na memória não volátil, pois o *deep sleep* apaga a RAM. Medir com o multímetro a corrente em cada modo: dormindo, amostrando sem Wi-Fi, transmitindo. Na versão enxuta (D15), o medidor USB mede os modos ativos, e o consumo dormindo vem do datasheet.
 - **Cálculo:** I_média = Σ(I_i · t_i) / T; autonomia (h) = C (mAh) × 0,8 / I_média (mA), para um uso típico declarado (por exemplo, duas sessões por dia).
 - **Pronto quando:** a tabela de consumo medido e a autonomia calculada estão prontas.
 
 **P13 — Montagem**
+- **Na versão enxuta (D15):** ESP32, mini protoboard, sensor e power bank numa caixa Patola presa à caneleira por velcro, sem solda; roteiro em `docs/inventario-materiais.md`. O texto abaixo descreve a versão com bateria.
 - **Fazer:** transferir o circuito para a placa perfurada; alimentar pela cadeia LiPo → TP4056 → chave → LDO 3,3 V → pino 3V3, sem passar pelo AMS1117 da placa; capacitores junto ao ESP32; caixa presa por velcro; FSR na tira.
 - **Pronto quando:** o equipamento é vestível, liga pela chave, funciona sem cabo e sai da caneleira sem dano.
 
@@ -418,7 +422,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 
 ## 11. Pendências a confirmar com o grupo
 
-1. **Compra:** decidir e registrar o pedido de MPU-6050, protoboard/jumpers e demais componentes; até agora só ESP32 e cabo foram mostrados.
+1. **Compra:** lista de materiais versão 1 definida em 02/11/2026 (D15), em `docs/inventario-materiais.md`; power bank e caneleira em mãos, e boa parte dos eletrônicos pode vir do laboratório da faculdade. Com o power bank, combinar com o Rafael o que o campo `bat` do `estado` publica.
 2. **Placa:** ligar ao computador para confirmar que o cabo transmite dados, qual porta aparece e qual chip USB-serial/driver é necessário.
 3. **Número oficial do grupo:** `g01` é provisório. Migrar o prefixo MQTT somente após decisão do grupo, sem perder registros do teste.
 4. **Geratrix:** confirmar se o ZIP recebido é a base atual ou apenas o protótipo visual; o código contém telas estáticas e não a integração MQTT.

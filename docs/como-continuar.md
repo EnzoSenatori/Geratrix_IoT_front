@@ -32,7 +32,7 @@ Em 02/11/2026, o firmware conta e classifica as repetições, ignora movimento s
 | --- | --- | --- |
 | P1 — Contrato MQTT | Concluída; v1.1 desde 01/11, com o broker novo | MQTTX: em 12/10 no broker anterior; em 02/11 no novo |
 | Broker próprio | Criado em 01/11 na conta do Enzo, com três usuários | Painel do EMQX |
-| P2 — Compra de componentes | Aberta: só a ESP32 e o cabo, com o Rafael | — |
+| P2 — Compra de componentes | Aberta: lista de materiais versão 1 (02/11), em `docs/inventario-materiais.md`; em mãos, ESP32, cabo, power bank e caneleira | — |
 | P3 — Leitura do sensor a 100 Hz | Concluída | Wokwi, em 13/10 |
 | P4 — Leitura real, offset e eixos | Não iniciada; aguarda as peças | — |
 | P5 a P7 — Filtro, contagem, classificação e resumo da série | Concluídas em simulação | Computador e Wokwi, em 01/11 |
@@ -47,15 +47,15 @@ O `README.md` do repositório traz sempre a versão mais recente desta tabela.
 
 ## O que fazer a seguir
 
-Enquanto as peças não chegam, o grupo trabalha no que não depende da placa, nesta ordem. Antes de começar um item, avise no grupo para ninguém fazer o mesmo em paralelo.
+Enquanto as peças não chegam, o grupo trabalha no que não depende da placa, nesta ordem. Os itens 1 a 3 estão com o Felipe desde 02/11/2026. Antes de começar um item, avise no grupo para ninguém fazer o mesmo em paralelo.
 
 1. **Operação sem rede (P11)**, no Wokwi e no broker do grupo. O `cmd`, a `sessao/<sid>` e o `ack` já funcionam (P10). Pronto quando:
-    - uma queda de conexão no meio da série não perde séries: o resumo sai ao reconectar, no descanso;
+    - uma queda de conexão no meio da série não perde séries: o resumo sai ao reconectar, no descanso. É o primeiro teste a fazer, sem código novo; o roteiro está em `firmware/caneleira/README.md`, seção "Teste com o MQTTX";
     - prescrição e resumos não confirmados ficam em Preferences e sobrevivem a um reinício da ESP32;
     - sem broker, a sessão roda com a última prescrição salva, e o app recebe tudo quando a conexão volta.
-2. **Botão e baixo consumo (P12).** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão; publicar `{"online":false}` antes de dormir.
-3. **Integração MQTT no app.** Pronto quando a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava antes de publicar o `ack`, e o histórico exibe as sessões gravadas. O grupo planeja levar o Geratrix para Flutter; o contrato não muda, e um app instalado pode usar a porta 8883, como a ESP32.
-4. **Documentação.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia calculada pelas correntes do datasheet, protocolo de validação (P14) e as seções do relatório que não dependem de medições.
+2. **Botão e baixo consumo (P12), a parte de código.** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão; publicar `{"online":false}` antes de dormir. Tudo testável no Wokwi; só a medição de corrente depende da placa.
+3. **Documentação técnica.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia estimada pelas correntes do datasheet, protocolo de validação (P14) e as seções do relatório que não dependem de medições.
+4. **Integração MQTT no app**, depois da migração do Geratrix para Flutter. Pronto quando a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava antes de publicar o `ack`, e o histórico exibe as sessões gravadas. O contrato não muda, e um app instalado pode usar a porta 8883, como a ESP32.
 
 Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limites com movimento real (P6), faixa real do sensor de pressão, corrente medida, montagem (P13) e ensaios (P14).
 
@@ -130,7 +130,7 @@ O broker fica na conta EMQX Cloud do Enzo, e as senhas só circulam por mensagem
 Estas regras protegem a integração entre as partes e a nota; quem precisar mudá-las propõe no grupo antes.
 
 - **Contrato MQTT:** tópicos, campos, unidades, QoS e retenção só mudam com nova versão do contrato e aval do Rafael. Caneleira e app quebram se um lado mudar sozinho.
-- **Decisões fechadas D1 a D14** (seção 4 do guia vivo): exercício sentado com uma única IMU, resumo por série e não por repetição, caneleira anônima, prescrição definida pelo gestor, entre outras. Não se reabrem sem motivo técnico concreto.
+- **Decisões fechadas D1 a D15** (seção 4 do guia vivo): exercício sentado com uma única IMU, resumo por série e não por repetição, caneleira anônima, prescrição definida pelo gestor, protótipo enxuto com power bank e sem solda, entre outras. Não se reabrem sem motivo técnico concreto.
 - **Decisão local:** toda a lógica de contagem e classificação roda na ESP32 e funciona com o celular desligado. O app exibe, configura e comanda; não decide.
 - **Linguagem:** o protótipo nunca é apresentado como dispositivo médico. Nada de "diagnóstico", "monitoramento clínico" ou "risco de queda", e os limites de teste (ADM 60°, 150 °/s) não são valores clínicos.
 - **Evidência:** um resultado só vale com data, ambiente (simulação, bancada ou app) e registro (print, foto ou tabela). Mensagem digitada no MQTTX não é dado medido pela ESP32, e tela estática não é integração.
@@ -161,12 +161,13 @@ Regras de trabalho:
 
 ## Quem faz o quê
 
-Divisão proposta ao grupo em 01/11/2026, ainda a confirmar.
+Divisão proposta ao grupo em 01/11/2026 e atualizada em 02/11/2026, com a entrada do Felipe.
 
 | Integrante | Frente | Procure para |
 | --- | --- | --- |
 | Enzo Senatori | Coordenação, lógica do firmware, broker e relatório | Senhas do broker, prioridades, revisão do firmware |
 | Rafael de Oliveira Corrêa | Hardware: compras, montagem e testes físicos; aval técnico do MQTT | Placa e peças, mudanças no contrato MQTT |
 | Theo Casella Mendonça | App: integração MQTT no Geratrix e telas | Telas e código do app |
+| Felipe (GitHub `felpszada`) | Firmware sem placa e documentação técnica: P11, código do P12, esquema, lista de componentes, autonomia estimada e protocolo P14 | Operação sem rede, baixo consumo, documentação técnica |
 
 Se alguém sair de uma frente, o substituto começa por este guia e pelo `README.md` da pasta correspondente; o histórico do que foi feito está nos commits e no guia vivo.

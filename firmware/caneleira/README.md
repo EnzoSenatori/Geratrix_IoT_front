@@ -64,6 +64,8 @@ O MQTTX Web faz o papel do app. Conexão: `wss://z2f0d126.ala.eu-central-1.emqxs
 5. No fim da série 1, chega `sessao/s7f3a` no MQTTX. Publique em `imrea/g01/caneleira/ack`: `{"sid":"s7f3a","series_recebidas":1}`.
 6. Depois de `Sessao concluida.`, publique `{"sid":"s7f3a","series_recebidas":2}`: o monitor mostra `MQTT: sessao toda confirmada; mensagem retida apagada.`, e o MQTTX recebe uma mensagem vazia em `sessao/s7f3a`.
 
+**Queda de conexão (pendente: primeiro teste do P11).** Com uma sessão em andamento, abra no MQTTX uma segunda conexão com o Client ID `caneleira-01`, o mesmo da ESP32, durante uma série. O broker derruba a ESP32, e o monitor mostra `MQTT: conexao perdida`. Desconecte essa segunda conexão antes do fim da série. Esperado: no fim da série, `MQTT: sem conexao; o resumo sera enviado ao reconectar.`; no descanso, a ESP32 reconecta e o resumo acumulado chega em `sessao/<sid>` na conexão principal do MQTTX. A contagem não pode parar em nenhum momento.
+
 Se o `cmd` não fizer efeito, o monitor diz onde parou: sem `MQTT: mensagem recebida`, a mensagem não chegou à ESP32 (confira se o MQTTX recebe o próprio envio; se não recebe, desconecte e conecte o MQTTX de novo); com ela, mas sem `prescricao recebida`, o conteúdo foi recusado e a linha seguinte diz o motivo; `MQTT: conexao perdida (codigo -4)` indica falta de resposta do broker, e `-3`, conexão fechada, por exemplo por outro cliente com o mesmo ID.
 
 ## Roteiro simulado (uma série, repetida sem fim)
@@ -117,7 +119,7 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 - A simulação não reproduz a aceleração linear do movimento, que existirá na placa real e pode exigir outro α.
 - Prescrição e resumos ficam só na RAM: um reinício da ESP32 antes do `ack` perde as séries não confirmadas, e, com rede ligada mas sem broker, a sessão não começa. O P11 vai guardar os dois em Preferences e rodar a sessão com a última prescrição salva.
 - Uma sessão nova substitui a anterior na memória. Se o app ainda não confirmou a anterior, ela continua retida no broker, mas a ESP32 deixa de reenviá-la.
-- A queda de conexão no meio de uma sessão foi verificada só no computador; falta repeti-la no Wokwi.
+- A queda de conexão no meio de uma sessão foi verificada só no computador; falta repeti-la no Wokwi (roteiro na seção "Teste com o MQTTX").
 - `ts` sai `null`: a ESP32 ainda não obtém a hora da rede (NTP).
 - A vibração foi vista num LED; a distinção dos padrões na perna e a intensidade dependem do motor real.
 - O FSR é simulado por um potenciômetro; os limiares de uso ainda não foram medidos.

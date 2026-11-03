@@ -2,7 +2,7 @@
 
 Lógica IoT da caneleira instrumentada para extensão de joelho, integrada ao aplicativo Geratrix. Projeto de extensão da disciplina Desenvolvimento IoT (Engenharia de Computação, Universidade Presbiteriana Mackenzie, 2026-2), em parceria com o IMREA.
 
-**Grupo:** Enzo Senatori, Rafael de Oliveira Corrêa e Theo Casella Mendonça · **Banca:** 20/11/2026
+**Grupo:** Enzo Senatori, Rafael de Oliveira Corrêa, Theo Casella Mendonça e Felipe · **Banca:** 20/11/2026
 
 > Protótipo didático. Não é dispositivo médico, não há teste com pacientes e não há dados reais: todos os valores do repositório são fictícios.
 
@@ -15,7 +15,7 @@ O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a l
 | Etapa | Situação | Onde foi verificada |
 |---|---|---|
 | P1 — Contrato MQTT | Concluída | Teste manual no MQTTX, com mensagens digitadas |
-| P2 — Compra de componentes | Aberta: só a ESP32 e o cabo estão em mãos | — |
+| P2 — Compra de componentes | Aberta: lista de materiais versão 1 (02/11), sem solda nem bateria, em `docs/inventario-materiais.md`; em mãos, ESP32, cabo, power bank e caneleira | — |
 | P3 — Leitura da IMU a 100 Hz | Concluída | Somente em simulação (Wokwi) |
 | P4 — Leitura real, offset e eixos | Não iniciada; aguarda as peças | — |
 | P5 a P7 — Filtro, contagem e classificação das repetições, resumo da série | Concluídas em simulação | Computador e Wokwi (01/11) |
