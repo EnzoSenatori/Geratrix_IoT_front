@@ -26,7 +26,7 @@ O protótipo é didático: não é dispositivo médico, não é testado em pacie
 
 ## Onde estamos
 
-Em 02/11/2026, o firmware conta e classifica as repetições, ignora movimento sem uso, sinaliza por vibração, recebe a prescrição do broker e publica nele o estado e o resumo de cada série, tudo em simulação. Nada foi testado ainda na placa real nem no app, e as peças não foram compradas.
+Em 06/11/2026, o firmware conta e classifica as repetições, ignora movimento sem uso, sinaliza por vibração e sincroniza os resumos com o broker. A operação offline e a recuperação após reinício foram validadas em simulação. A validação na placa real e no app segue pendente.
 
 | Etapa | Situação | Onde foi verificada |
 | --- | --- | --- |
@@ -38,8 +38,8 @@ Em 02/11/2026, o firmware conta e classifica as repetições, ignora movimento s
 | P5 a P7 — Filtro, contagem, classificação e resumo da série | Concluídas em simulação | Computador e Wokwi, em 01/11 |
 | P8 — Uso efetivo pelo sensor de pressão | Concluída em simulação | Wokwi, com potenciômetro no lugar do FSR, em 02/11 |
 | P9 — Biofeedback por vibração | Concluída em simulação | Wokwi, com LED no lugar do motor, em 02/11 |
-| P10 — MQTT na ESP32 | Concluída em simulação: `estado`, aviso de desconexão, `cmd`, `sessao/<sid>` e `ack`; falta a queda de conexão no Wokwi | Wokwi e MQTTX, em 02/11 |
-| P11 — Operação sem rede | Não iniciada | — |
+| P10 — MQTT na ESP32 | Concluída em simulação. `estado`, aviso de desconexão, `cmd`, `sessao/<sid>` e `ack` verificados | Wokwi e MQTTX, em 02/11 |
+| P11 — Operação sem rede | Concluída em simulação. Queda durante a série, recuperação após reinício e sessão iniciada offline verificadas | [Wokwi e MQTTX, em 06/11](../evidencias/p11/) |
 | App — integração MQTT no Geratrix | Não iniciada; as telas são só visuais | — |
 | P12 a P16 — Autonomia, montagem, validação, documentação, relatório | Não iniciadas | — |
 
@@ -49,10 +49,7 @@ O `README.md` do repositório traz sempre a versão mais recente desta tabela.
 
 Enquanto as peças não chegam, o grupo trabalha no que não depende da placa, nesta ordem. Os itens 1 a 3 estão com o Felipe desde 02/11/2026. Antes de começar um item, avise no grupo para ninguém fazer o mesmo em paralelo.
 
-1. **Operação sem rede (P11)**, no Wokwi e no broker do grupo. O `cmd`, a `sessao/<sid>` e o `ack` já funcionam (P10). Pronto quando:
-    - uma queda de conexão no meio da série não perde séries: o resumo sai ao reconectar, no descanso. É o primeiro teste a fazer, sem código novo; o roteiro está em `firmware/caneleira/README.md`, seção "Teste com o MQTTX";
-    - prescrição e resumos não confirmados ficam em Preferences e sobrevivem a um reinício da ESP32;
-    - sem broker, a sessão roda com a última prescrição salva, e o app recebe tudo quando a conexão volta.
+1. **Operação sem rede (P11).** Validada no Wokwi e no broker do grupo, com o MQTTX representando o app. O roteiro e os resultados estão nas [evidências do P11](../evidencias/p11/).
 2. **Botão e baixo consumo (P12), a parte de código.** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão; publicar `{"online":false}` antes de dormir. Tudo testável no Wokwi; só a medição de corrente depende da placa.
 3. **Documentação técnica.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia estimada pelas correntes do datasheet, protocolo de validação (P14) e as seções do relatório que não dependem de medições.
 4. **Integração MQTT no app**, depois da migração do Geratrix para Flutter. Pronto quando a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava antes de publicar o `ack`, e o histórico exibe as sessões gravadas. O contrato não muda, e um app instalado pode usar a porta 8883, como a ESP32.

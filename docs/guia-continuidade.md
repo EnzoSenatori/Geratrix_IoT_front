@@ -362,6 +362,8 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 **P11 — Operação com o celular desligado**
 - **Fazer:** sem rede ou sem broker, a sessão roda com a última prescrição salva; os resumos ficam na memória não volátil até o `ack`.
 - **Pronto quando:** uma sessão completa roda com o roteador desligado e, ao religá-lo, o app recebe tudo.
+- **Situação em 06/11/2026:** concluído em simulação no Wokwi, com o MQTTX Web no papel do app. Foram verificados a queda durante uma série e o reenvio na reconexão, a recuperação da prescrição e da série pendente após reinício por software e o início com prescrição salva sem acesso ao broker. O MQTTX recebeu as duas séries offline após a reconexão, e o firmware confirmou o ACK final e a limpeza da mensagem retida. [Evidências e roteiro](../evidencias/p11/)
+- **Decisões para a continuação:** na partida sem broker, o firmware espera 15 s e o uso efetivo antes de iniciar com um `sid` novo. A retomada após reinício começa no fim da última série gravada. Falta repetir o cenário com interrupção real da rede na placa física e com o app Geratrix integrado.
 
 ### Fase 4 — Autonomia e montagem
 

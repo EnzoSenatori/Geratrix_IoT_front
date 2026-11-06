@@ -1,6 +1,6 @@
 # Firmware da caneleira
 
-**Estado em 02/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. O P10 foi verificado no Wokwi e no MQTTX em 02/11/2026: conexão segura ao broker, aviso de desconexão, `estado`, prescrição recebida pelo `cmd`, séries publicadas em `sessao/<sid>` e `ack` que apaga a mensagem retida. Falta testar uma queda de conexão no meio da sessão e guardar prescrição e resumos na memória não volátil, o que segue com o P11. Nada foi testado ainda na placa real.
+**Estado em 06/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. O P10 (comunicação MQTT) e o P11 (queda, persistência e início offline) foram verificados em simulação no Wokwi e no MQTTX. A validação na placa real segue pendente. [Evidências do P11](../../evidencias/p11/)
 
 ## Arquivos
 
@@ -38,7 +38,7 @@ Os GPIOs 34 e 35 estão no ADC1, o único utilizável com o Wi-Fi ligado; o 33 p
 
 Com `USAR_SINAL_SIMULADO = true`, o sensor virtual é ignorado e o firmware processa o roteiro fictício. A primeira série termina em cerca de 45 s, e a sessão completa, em menos de 3 min.
 
-Com `USAR_REDE = true`, a sessão só começa quando a prescrição chega pelo `cmd` (seção seguinte). Com `USAR_REDE = false`, começa logo após a calibração, com `PRESCRICAO_TESTE`: sessão `sim001`, 3 séries de 10 repetições.
+Com `USAR_REDE = true` e o broker disponível na partida, o firmware aguarda a prescrição pelo `cmd` ou retoma a sessão pendente gravada. Se a partida ficar 15 s sem broker e houver uma prescrição salva, inicia uma sessão com um `sid` novo após calibrar e detectar uso efetivo. Com `USAR_REDE = false`, usa `PRESCRICAO_TESTE`, a sessão `sim001` com 3 séries de 10 repetições.
 
 **Resultado esperado.** Em cada série: 10 repetições, 7 válidas, 2 fora do padrão por ADM e 1 por velocidade (perto de 220 °/s). A posição de cada uma muda de série para série, porque o roteiro segue de onde parou. Ao fim de cada série, uma linha `sessao/<sid> -> {...}` com o resumo no formato do contrato:
 
@@ -64,7 +64,7 @@ O MQTTX Web faz o papel do app. Conexão: `wss://z2f0d126.ala.eu-central-1.emqxs
 5. No fim da série 1, chega `sessao/s7f3a` no MQTTX. Publique em `imrea/g01/caneleira/ack`: `{"sid":"s7f3a","series_recebidas":1}`.
 6. Depois de `Sessao concluida.`, publique `{"sid":"s7f3a","series_recebidas":2}`: o monitor mostra `MQTT: sessao toda confirmada; mensagem retida apagada.`, e o MQTTX recebe uma mensagem vazia em `sessao/s7f3a`.
 
-**Queda de conexão (pendente: primeiro teste do P11).** Com uma sessão em andamento, abra no MQTTX uma segunda conexão com o Client ID `caneleira-01`, o mesmo da ESP32, durante uma série. O broker derruba a ESP32, e o monitor mostra `MQTT: conexao perdida`. Desconecte essa segunda conexão antes do fim da série. Esperado: no fim da série, `MQTT: sem conexao; o resumo sera enviado ao reconectar.`; no descanso, a ESP32 reconecta e o resumo acumulado chega em `sessao/<sid>` na conexão principal do MQTTX. A contagem não pode parar em nenhum momento.
+**Queda de conexão (P11).** Com uma sessão em andamento, abra no MQTTX uma segunda conexão com o Client ID `caneleira-01`, o mesmo da ESP32, durante uma série. O broker derruba a ESP32, e o monitor mostra `MQTT: conexao perdida`. Desconecte essa segunda conexão antes do fim da série. Ao terminar a série, o serial informa que o resumo ficou pendente. No descanso, a ESP32 reconecta e o resumo acumulado chega em `sessao/<sid>` na conexão principal do MQTTX. A contagem segue durante a queda. [Roteiro dos demais testes do P11](../../evidencias/p11/)
 
 Se o `cmd` não fizer efeito, o monitor diz onde parou: sem `MQTT: mensagem recebida`, a mensagem não chegou à ESP32 (confira se o MQTTX recebe o próprio envio; se não recebe, desconecte e conecte o MQTTX de novo); com ela, mas sem `prescricao recebida`, o conteúdo foi recusado e a linha seguinte diz o motivo; `MQTT: conexao perdida (codigo -4)` indica falta de resposta do broker, e `-3`, conexão fechada, por exemplo por outro cliente com o mesmo ID.
 
@@ -117,9 +117,8 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 ## Limites desta versão
 
 - A simulação não reproduz a aceleração linear do movimento, que existirá na placa real e pode exigir outro α.
-- Prescrição e resumos ficam só na RAM: um reinício da ESP32 antes do `ack` perde as séries não confirmadas, e, com rede ligada mas sem broker, a sessão não começa. O P11 vai guardar os dois em Preferences e rodar a sessão com a última prescrição salva.
-- Uma sessão nova substitui a anterior na memória. Se o app ainda não confirmou a anterior, ela continua retida no broker, mas a ESP32 deixa de reenviá-la.
-- A queda de conexão no meio de uma sessão foi verificada só no computador; falta repeti-la no Wokwi (roteiro na seção "Teste com o MQTTX").
+- A persistência é feita ao terminar cada série. Se houver um reinício no meio da série, as repetições parciais são descartadas e a próxima execução retoma a partir da última série concluída.
+- A caneleira mantém uma sessão pendente por vez e aguarda o ACK final antes de aceitar outra. A partida automática sem broker exige prescrição salva e uso efetivo.
 - `ts` sai `null`: a ESP32 ainda não obtém a hora da rede (NTP).
 - A vibração foi vista num LED; a distinção dos padrões na perna e a intensidade dependem do motor real.
 - O FSR é simulado por um potenciômetro; os limiares de uso ainda não foram medidos.

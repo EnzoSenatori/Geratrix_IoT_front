@@ -1,4 +1,4 @@
-// Caneleira instrumentada — firmware da ESP32 (P3 a P10).
+// Caneleira instrumentada — firmware da ESP32 (P3 a P11).
 // Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
 // ao fim de cada série, publica o resumo no tópico sessao/<sid> do contrato MQTT.
 // Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
@@ -7,10 +7,12 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <Wire.h>
+#include <esp_random.h>
 
 #include "biofeedback.h"
 #include "certificado_ca.h"
@@ -24,6 +26,8 @@ constexpr bool IMPRIMIR_ANGULO = false;     // true: ângulos a 10 Hz, útil no 
 constexpr bool USAR_REDE = true;            // false: funciona sem Wi-Fi nem broker
 constexpr bool ESPERAR_CMD = USAR_REDE;     // com rede, a sessão só começa com a prescrição do app
 constexpr bool NO_WOKWI = true;             // o simulador roda abaixo do tempo real (ver ESTADO_PERIODO_MS)
+constexpr bool TESTAR_REINICIO_P11 = false;  // no Wokwi, reinicia antes de publicar a primeira série
+constexpr bool TESTAR_OFFLINE_P11 = false;  // simula broker indisponível até o fim da sessão
 constexpr uint8_t PIN_SDA = 21;
 constexpr uint8_t PIN_SCL = 22;
 constexpr uint8_t PIN_FSR = 34;  // FSR na tira (no Wokwi, o potenciômetro "fsr")
@@ -58,6 +62,18 @@ constexpr uint32_t ESTADO_PERIODO_MS = NO_WOKWI ? 20000 : 60000;  // contrato: a
 constexpr uint16_t MQTT_KEEPALIVE_S = NO_WOKWI ? 60 : 15;
 constexpr uint32_t RECONEXAO_MIN_MS = 2000;           // espera entre tentativas: 2 s...
 constexpr uint32_t RECONEXAO_MAX_MS = 30000;          // ...dobrando até 30 s
+constexpr uint32_t ESPERA_BROKER_NA_PARTIDA_MS = 15000;
+
+constexpr char CHAVE_PRESCRICAO[] = "prescricao-v1";
+constexpr char CHAVE_SESSAO[] = "sessao-v1";
+constexpr char SID_SEMENTE_P11[] = "p11-offline-01";
+
+struct SessaoSalva {
+  Prescricao prescricao;
+  uint8_t concluidas;
+  uint8_t confirmadas;
+  ResumoSerie resumos[MAX_SERIES];
+};
 
 Adafruit_MPU6050 imu;
 Caneleira caneleira;
@@ -65,6 +81,13 @@ DetectorUso detectorUso;
 Biofeedback vibracao;
 WiFiClientSecure clienteTls;
 PubSubClient mqtt(clienteTls);
+Preferences memoria;
+bool memoriaDisponivel = false;
+bool limpezaPendente = false;
+Prescricao ultimaPrescricao{};
+bool inicioOfflinePendente = false;
+bool simularBrokerIndisponivel = false;
+uint32_t inicioEsperaBrokerMs = 0;
 bool estadoPendente = false;  // algo mudou: publicar estado na próxima volta
 uint32_t ultimoEstadoMs = 0;
 uint8_t seriesConfirmadas = 0;  // séries que o app confirmou ter salvo (ack)
@@ -189,6 +212,70 @@ void topicoSessao(char* destino, size_t tamanho) {
   snprintf(destino, tamanho, "%s%s", TOPICO_SESSAO_PREFIXO, caneleira.sessao.p.sid);
 }
 
+// Grava apenas séries concluídas e o último ACK, em um único registro.
+bool salvarResumoPendente() {
+  if (!USAR_REDE) return false;
+  const Sessao& s = caneleira.sessao;
+  SessaoSalva salva{};
+  salva.prescricao = s.p;
+  salva.concluidas = seriesConcluidas(s);
+  salva.confirmadas = seriesConfirmadas;
+  for (uint8_t i = 0; i < salva.concluidas; i++) salva.resumos[i] = s.resumos[i];
+  if (!memoriaDisponivel || memoria.putBytes(CHAVE_SESSAO, &salva, sizeof(salva)) != sizeof(salva)) {
+    Serial.println("NVS: falha ao salvar o resumo.");
+    return false;
+  }
+  return true;
+}
+
+// Confere os limites do registro antes de restaurar os índices da sessão.
+bool sessaoSalvaValida(const SessaoSalva& salva) {
+  if (!prescricaoValida(salva.prescricao) || salva.concluidas == 0 ||
+      salva.concluidas > salva.prescricao.series || salva.confirmadas > salva.concluidas) return false;
+  for (uint8_t i = 0; i < salva.concluidas; i++) {
+    const ResumoSerie& r = salva.resumos[i];
+    if (r.n != i + 1 || r.total != salva.prescricao.reps || r.validas > r.total ||
+        r.desviosAdm > r.total || r.desviosVel > r.total) return false;
+  }
+  return true;
+}
+
+// Retoma do fim da última série salva. Se houver outra, recomeça o descanso.
+void recuperarSessao() {
+  if (!USAR_REDE || !memoriaDisponivel || !memoria.isKey(CHAVE_SESSAO)) return;
+  SessaoSalva salva{};
+  if (memoria.getBytes(CHAVE_SESSAO, &salva, sizeof(salva)) != sizeof(salva) ||
+      !sessaoSalvaValida(salva)) {
+    Serial.println("NVS: resumo salvo invalido.");
+    return;
+  }
+
+  Sessao& s = caneleira.sessao;
+  iniciarSessao(s, salva.prescricao, caneleira.theta);
+  for (uint8_t i = 0; i < salva.concluidas; i++) s.resumos[i] = salva.resumos[i];
+  s.serie = salva.concluidas - 1;
+  const bool concluida = salva.concluidas == salva.prescricao.series;
+  s.status = concluida ? StatusSessao::CONCLUIDA : StatusSessao::DESCANSO;
+  s.fimDescanso = salva.prescricao.descanso;
+  seriesConfirmadas = salva.confirmadas;
+  limpezaPendente = concluida && salva.confirmadas == salva.concluidas;
+  Serial.printf("NVS: resumo recuperado: %s, %u serie(s), %u com ACK.\n", s.p.sid,
+                (unsigned)salva.concluidas, (unsigned)salva.confirmadas);
+}
+
+// Limpa a publicação retida antes de apagar o registro local da sessão confirmada.
+void limparResumoConfirmado() {
+  char topico[64];
+  topicoSessao(topico, sizeof(topico));
+  if (!mqtt.publish(topico, (const uint8_t*)"", 0, true)) return;
+  if (memoriaDisponivel && memoria.isKey(CHAVE_SESSAO) && !memoria.remove(CHAVE_SESSAO)) {
+    Serial.println("NVS: falha ao remover o resumo confirmado.");
+    return;
+  }
+  limpezaPendente = false;
+  Serial.println("MQTT: sessao toda confirmada; mensagem retida apagada.");
+}
+
 // Publica, retido, o resumo acumulado das séries concluídas em sessao/<sid>. Sem conexão,
 // ele sai na próxima reconexão, enquanto o app não confirmar todas as séries.
 void publicarResumo() {
@@ -218,6 +305,23 @@ void anunciarSessao() {
   estadoPendente = true;
 }
 
+// Usa os parâmetros salvos uma vez por partida sem broker, com um SID novo.
+void iniciarOfflineSeNecessario(bool emUso) {
+  if (!inicioOfflinePendente || !caneleira.calib.pronta || !emUso ||
+      millis() - inicioEsperaBrokerMs < ESPERA_BROKER_NA_PARTIDA_MS) return;
+
+  Prescricao offline = ultimaPrescricao;
+  const unsigned long parteAlta = esp_random();
+  const unsigned long parteBaixa = esp_random() & 0xFFFFFFUL;
+  snprintf(offline.sid, sizeof(offline.sid), "o%08lx%06lx", parteAlta, parteBaixa);
+  inicioOfflinePendente = false;
+  seriesConfirmadas = 0;
+  Serial.printf("P11: iniciando offline com a prescricao salva %s; novo sid %s.\n",
+                ultimaPrescricao.sid, offline.sid);
+  receberPrescricao(caneleira, offline);
+  anunciarSessao();
+}
+
 // Trata a prescrição recebida em cmd: valida, ignora repetições e começa a sessão.
 void tratarCmd(JsonDocument& doc) {
   const int series = doc["series"] | 0;
@@ -236,16 +340,34 @@ void tratarCmd(JsonDocument& doc) {
   }
 
   const StatusSessao st = caneleira.sessao.status;
-  if (st != StatusSessao::AGUARDANDO && strcmp(p.sid, caneleira.sessao.p.sid) == 0) {
+  if (strcmp(p.sid, caneleira.sessao.p.sid) == 0 ||
+      strcmp(p.sid, caneleira.prescricao.sid) == 0) {
     Serial.println("MQTT: cmd repetido da sessao atual; ignorado.");
     return;
   }
-  if (st == StatusSessao::EM_EXECUCAO || st == StatusSessao::DESCANSO) {
+  if (st == StatusSessao::EM_EXECUCAO || st == StatusSessao::DESCANSO ||
+      (st == StatusSessao::AGUARDANDO && caneleira.prescricao.series > 0)) {
     Serial.println("MQTT: cmd ignorado; ha uma sessao em andamento.");
+    return;
+  }
+  if (limpezaPendente) limparResumoConfirmado();
+  if (limpezaPendente || seriesConcluidas(caneleira.sessao) > seriesConfirmadas) {
+    Serial.println("MQTT: cmd ignorado; aguarde o ACK da sessao anterior.");
     return;
   }
 
   seriesConfirmadas = 0;
+  if (memoriaDisponivel && memoria.putBytes(CHAVE_PRESCRICAO, &p, sizeof(p)) == sizeof(p)) {
+    ultimaPrescricao = p;
+    Serial.printf("NVS: prescricao salva: %s.\n", p.sid);
+    if (TESTAR_OFFLINE_P11 && strcmp(p.sid, SID_SEMENTE_P11) == 0) {
+      Serial.println("P11 teste: reiniciando com o broker simulado indisponivel.");
+      Serial.flush();
+      ESP.restart();
+    }
+  } else {
+    Serial.println("NVS: falha ao salvar a prescricao.");
+  }
   receberPrescricao(caneleira, p);
   Serial.printf("MQTT: prescricao recebida (sessao %s).\n", p.sid);
   if (caneleira.sessao.status == StatusSessao::EM_EXECUCAO) anunciarSessao();
@@ -257,16 +379,15 @@ void tratarAck(const char* sid, int recebidas) {
   if (strcmp(sid, caneleira.sessao.p.sid) != 0) return;  // ack de outra sessão
   const int concluidas = seriesConcluidas(caneleira.sessao);
   if (recebidas > concluidas) recebidas = concluidas;  // não confirma série que ainda não existe
-  if (recebidas > seriesConfirmadas) seriesConfirmadas = recebidas;
+  if (recebidas > seriesConfirmadas) {
+    seriesConfirmadas = recebidas;
+    salvarResumoPendente();
+    limpezaPendente = caneleira.sessao.status == StatusSessao::CONCLUIDA &&
+                      seriesConfirmadas == concluidas;
+  }
   Serial.printf("MQTT: o app confirmou %u serie(s) salva(s).\n", (unsigned)seriesConfirmadas);
 
-  if (caneleira.sessao.status == StatusSessao::CONCLUIDA &&
-      seriesConfirmadas >= seriesConcluidas(caneleira.sessao)) {
-    char topico[64];
-    topicoSessao(topico, sizeof(topico));
-    mqtt.publish(topico, (const uint8_t*)"", 0, true);  // publicação vazia apaga a retida
-    Serial.println("MQTT: sessao toda confirmada; mensagem retida apagada.");
-  }
+  if (limpezaPendente) limparResumoConfirmado();
 }
 
 // Recebe as mensagens assinadas (cmd e ack) e encaminha cada uma ao seu tratamento.
@@ -288,6 +409,7 @@ bool conectarBroker() {
     Serial.printf("MQTT: falha na conexao (codigo %d).\n", mqtt.state());
     return false;
   }
+  inicioOfflinePendente = false;
   Serial.println("MQTT: conectado.");
   // Reinscreve a cada conexão: não depende de sessão guardada no broker.
   const bool assinouCmd = mqtt.subscribe(TOPICO_CMD, 1);
@@ -295,14 +417,15 @@ bool conectarBroker() {
   Serial.printf("MQTT: assinaturas cmd %s, ack %s.\n", assinouCmd ? "ok" : "FALHOU",
                 assinouAck ? "ok" : "FALHOU");
   publicarEstado();
-  if (seriesConcluidas(caneleira.sessao) > seriesConfirmadas) publicarResumo();  // pendente
+  if (limpezaPendente) limparResumoConfirmado();
+  else if (seriesConcluidas(caneleira.sessao) > seriesConfirmadas) publicarResumo();
   return true;
 }
 
 // Mantém a conexão com o broker. A conexão TLS trava a ESP32 por 1 a 2 s, então só é
 // tentada fora de uma série, com espera crescente entre tentativas (2 s a 30 s).
 void atualizarComunicacao() {
-  if (!USAR_REDE || WiFi.status() != WL_CONNECTED) return;
+  if (!USAR_REDE || simularBrokerIndisponivel || WiFi.status() != WL_CONNECTED) return;
 
   static bool estavaConectado = false;
   if (mqtt.connected()) {
@@ -343,7 +466,9 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
   if (ev & EV_CALIBRADO) {
     Serial.printf("Offset do giroscopio: %.2f graus/s.\n", caneleira.calib.offset);
     if (s.status == StatusSessao::EM_EXECUCAO) anunciarSessao();
-    else Serial.println("Aguardando a prescricao do app (topico cmd)...");
+    else if (s.status == StatusSessao::AGUARDANDO) {
+      Serial.println("Aguardando a prescricao do app (topico cmd)...");
+    }
   }
   if (ev & EV_REP_SEM_USO) Serial.println("Movimento ignorado: caneleira fora da perna.");
 
@@ -358,6 +483,13 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
   }
   if (ev & EV_FIM_SERIE) {
     sinalizar(Padrao::FIM_SERIE, "3 pulsos curtos - fim de serie");
+    const bool salvo = salvarResumoPendente();
+    if (salvo) Serial.printf("NVS: resumo salvo: %s, serie %u.\n", s.p.sid, (unsigned)(s.serie + 1));
+    if (salvo && TESTAR_REINICIO_P11 && !TESTAR_OFFLINE_P11 && s.serie == 0) {
+      Serial.println("P11: reiniciando antes de publicar o resumo.");
+      Serial.flush();
+      ESP.restart();
+    }
     publicarResumo();
     if (!(ev & EV_SESSAO_CONCLUIDA)) Serial.printf("Descanso de %u s.\n", (unsigned)s.p.descanso);
   }
@@ -365,12 +497,32 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
     sinalizar(Padrao::FIM_DESCANSO, "1 pulso longo - fim do descanso");
     Serial.printf("Serie %u iniciada.\n", (unsigned)(s.serie + 1));
   }
-  if (ev & EV_SESSAO_CONCLUIDA) Serial.println("Sessao concluida.");
+  if (ev & EV_SESSAO_CONCLUIDA) {
+    Serial.println("Sessao concluida.");
+    if (simularBrokerIndisponivel) {
+      simularBrokerIndisponivel = false;
+      Serial.println("P11 teste: broker disponivel novamente.");
+    }
+  }
 }
 
 // Inicializa o monitor serial, o sensor (no modo real) e o processamento.
 void setup() {
   Serial.begin(115200);
+  memoriaDisponivel = memoria.begin("caneleira", false);
+  if (!memoriaDisponivel) {
+    Serial.println("NVS: falha ao abrir a memoria.");
+  } else if (memoria.isKey(CHAVE_PRESCRICAO)) {
+    Prescricao salva{};
+    if (memoria.getBytes(CHAVE_PRESCRICAO, &salva, sizeof(salva)) == sizeof(salva) &&
+        prescricaoValida(salva)) {
+      ultimaPrescricao = salva;
+      Serial.printf("NVS: prescricao recuperada: %s, %u series x %u reps.\n",
+                    salva.sid, (unsigned)salva.series, (unsigned)salva.reps);
+    } else {
+      Serial.println("NVS: prescricao salva invalida.");
+    }
+  }
   iniciarMotor();
   iniciarWifi();
   clienteTls.setCACert(CERTIFICADO_CA_EMQX);
@@ -393,8 +545,16 @@ void setup() {
   }
 
   iniciarCaneleira(caneleira, ESPERAR_CMD ? Prescricao{} : PRESCRICAO_TESTE);
-  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P10 - modo SIMULADO (repeticoes ficticias)."
-                                     : "Caneleira P10 - MPU-6050 real.");
+  recuperarSessao();
+  inicioEsperaBrokerMs = millis();
+  inicioOfflinePendente = USAR_REDE && caneleira.sessao.status == StatusSessao::AGUARDANDO &&
+                          prescricaoValida(ultimaPrescricao);
+  simularBrokerIndisponivel = TESTAR_OFFLINE_P11 &&
+                              strcmp(ultimaPrescricao.sid, SID_SEMENTE_P11) == 0 &&
+                              caneleira.sessao.status != StatusSessao::CONCLUIDA;
+  if (simularBrokerIndisponivel) Serial.println("P11 teste: broker simulado indisponivel.");
+  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P11 - modo SIMULADO (repeticoes ficticias)."
+                                     : "Caneleira P11 - MPU-6050 real.");
   Serial.println("Calibrando o giroscopio: mantenha a perna parada por 2 s...");
   proximaLeituraUs = micros() + PERIODO_US;
 }
@@ -421,8 +581,10 @@ void loop() {
   }
 
   Repeticao rep;
-  const uint8_t eventos = processarLeitura(caneleira, leitura, DT_S, usoEfetivo(), rep);
+  const bool emUso = usoEfetivo();
+  const uint8_t eventos = processarLeitura(caneleira, leitura, DT_S, emUso, rep);
   if (eventos) tratarEventos(eventos, rep);
+  iniciarOfflineSeNecessario(emUso);
 
   amostras++;
   if (IMPRIMIR_ANGULO && amostras % 10 == 0) {
