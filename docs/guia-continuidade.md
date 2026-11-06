@@ -384,6 +384,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 **P14 — Validação**
 - **Fazer:** declarar o protocolo **antes** dos ensaios — ângulos de referência (0°, 30°, 60°, 90°), número de medições por ângulo (por exemplo, 10), erro aceitável (proposta: ±5°) e número de séries com contagem manual; executar com os três integrantes; registrar tudo em planilha.
 - **Pronto quando:** há tabela de erro médio e máximo por ângulo e taxa de acerto da contagem, comparadas ao erro declarado.
+- **Situação em 06/11/2026:** protocolo declarado em `docs/protocolo-validacao-p14.md`, na versão enxuta escolhida pelo grupo: ângulo em bancada (±5°) e contagem de repetições (90%), mais verificações de funcionamento (uso efetivo, biofeedback, queda de conexão e aquecimento). Falta executar, com a placa.
 
 **P15 — Documentação técnica**
 - **Fazer:** esquema elétrico (Wokwi ou Fritzing), código comentado, lista de componentes com dados de datasheet (faixa, sensibilidade, tensão, consumo), contrato MQTT e resultados.
