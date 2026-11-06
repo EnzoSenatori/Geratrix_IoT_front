@@ -119,6 +119,9 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 - A simulação não reproduz a aceleração linear do movimento, que existirá na placa real e pode exigir outro α.
 - A persistência é feita ao terminar cada série. Se houver um reinício no meio da série, as repetições parciais são descartadas e a próxima execução retoma a partir da última série concluída.
 - A caneleira mantém uma sessão pendente por vez e aguarda o ACK final antes de aceitar outra. A partida automática sem broker exige prescrição salva e uso efetivo.
+- A sessão iniciada sem broker recebe um `sid` criado pela caneleira, sem ligação com o residente. O app precisa assinar `sessao/+` e confirmar toda sessão recebida: enquanto uma sessão não for toda confirmada, a caneleira recusa `cmd` novo, inclusive depois de reiniciar. No MQTTX, basta publicar o `ack` com o `sid` novo. Uma correção foi testada no computador em 06/11 e não aplicada, porque muda o contrato: o resumo levaria o campo `origem`, com o `sid` da prescrição usada.
+- A partida sem broker começa 15 s depois de ligar. Numa rede lenta, a sessão pode começar com a prescrição antiga, e o `cmd` do gestor só é aceito ao fim dela. Aumentar `ESPERA_BROKER_NA_PARTIDA_MS` reduz o risco; com o P12, o botão pode virar o gatilho.
+- `TESTAR_REINICIO_P11` e `TESTAR_OFFLINE_P11` existem só para os testes no Wokwi: ficam em `false` e podem ser removidas antes da placa real.
 - `ts` sai `null`: a ESP32 ainda não obtém a hora da rede (NTP).
 - A vibração foi vista num LED; a distinção dos padrões na perna e a intensidade dependem do motor real.
 - O FSR é simulado por um potenciômetro; os limiares de uso ainda não foram medidos.

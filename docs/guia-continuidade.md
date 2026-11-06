@@ -286,7 +286,7 @@ Recomendação feita ao grupo: comprar a lista completa num único pedido, porqu
 
 **Caminho crítico atualizado:** P1 foi concluído. Restam P2 e P4 a P6 para validar o sensoriamento físico e a contagem de repetições; a implementação MQTT do Geratrix pode avançar em paralelo com dados fictícios.
 
-**Frente sem hardware (decisão de 01/11/2026).** Enquanto as peças não chegam, o grupo concentra-se no que não depende da placa, testando no Wokwi, no navegador e no computador. Ordem:
+**Frente sem hardware (decisão de 01/11/2026).** *Atualização em 06/11/2026: P8, P9, P10 e P11 concluídos em simulação; a ordem atual do que falta está em `docs/como-continuar.md`.* Enquanto as peças não chegam, o grupo concentra-se no que não depende da placa, testando no Wokwi, no navegador e no computador. Ordem:
 
 1. **P10 e P11 — MQTT na ESP32, no Wokwi e no broker do Enzo.** Pronto quando: o `cmd` enviado pelo MQTTX é aplicado; cada série aparece em `sessao/<sid>`; o `ack` final limpa a mensagem retida; uma queda de conexão simulada no meio da sessão não perde séries; parar a simulação faz `estado` virar `{"online":false}`.
 2. **Integração MQTT no Geratrix.** Pronto quando: a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava no navegador antes de publicar o `ack`, e o histórico exibe as sessões gravadas.
@@ -364,6 +364,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 - **Pronto quando:** uma sessão completa roda com o roteador desligado e, ao religá-lo, o app recebe tudo.
 - **Situação em 06/11/2026:** concluído em simulação no Wokwi, com o MQTTX Web no papel do app. Foram verificados a queda durante uma série e o reenvio na reconexão, a recuperação da prescrição e da série pendente após reinício por software e o início com prescrição salva sem acesso ao broker. O MQTTX recebeu as duas séries offline após a reconexão, e o firmware confirmou o ACK final e a limpeza da mensagem retida. [Evidências e roteiro](../evidencias/p11/)
 - **Decisões para a continuação:** na partida sem broker, o firmware espera 15 s e o uso efetivo antes de iniciar com um `sid` novo. A retomada após reinício começa no fim da última série gravada. Falta repetir o cenário com interrupção real da rede na placa física e com o app Geratrix integrado.
+- **Limitações aceitas em 06/11/2026:** a sessão iniciada sem broker tem `sid` criado pela caneleira, e o app precisa assinar `sessao/+` e confirmar toda sessão recebida, senão a caneleira recusa `cmd` novo; a espera de 15 s pode iniciar uma sessão numa rede só lenta. Detalhes nos limites do `firmware/caneleira/README.md`.
 
 ### Fase 4 — Autonomia e montagem
 
