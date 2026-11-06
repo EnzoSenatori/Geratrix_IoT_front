@@ -372,6 +372,7 @@ Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limi
 - **Fazer:** *deep sleep* com despertar pelo botão (ext0, GPIO 33) **e por timer no fim do descanso** — sem o timer, o aviso de fim de descanso não acontece com o ESP32 dormindo. Guardar o estado da sessão em `RTC_DATA_ATTR` ou na memória não volátil, pois o *deep sleep* apaga a RAM. Medir com o multímetro a corrente em cada modo: dormindo, amostrando sem Wi-Fi, transmitindo. Na versão enxuta (D15), o medidor USB mede os modos ativos, e o consumo dormindo vem do datasheet.
 - **Cálculo:** I_média = Σ(I_i · t_i) / T; autonomia (h) = C (mAh) × 0,8 / I_média (mA), para um uso típico declarado (por exemplo, duas sessões por dia).
 - **Pronto quando:** a tabela de consumo medido e a autonomia calculada estão prontas.
+- **Situação em 06/11/2026:** autonomia estimada pelos datasheets com o power bank do grupo (74 Wh): cerca de 33 dias com duas sessões diárias, se o power bank não se desligar no *deep sleep*, e 98 h em uso contínuo. Detalhes, riscos e tabela de medição em `docs/autonomia.md`. Falta o código do *deep sleep* e a medição na placa.
 
 **P13 — Montagem**
 - **Na versão enxuta (D15):** ESP32, mini protoboard, sensor e power bank numa caixa Patola presa à caneleira por velcro, sem solda; roteiro em `docs/inventario-materiais.md`. O texto abaixo descreve a versão com bateria.
