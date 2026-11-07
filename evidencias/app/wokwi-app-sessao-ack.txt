@@ -1,0 +1,91 @@
+# Integração app Flutter ↔ caneleira — sessão completa (07/11/2026)
+# Ambiente: Wokwi (rede Wokwi-GUEST), broker EMQX Cloud do grupo (z2f0d126), firmware da main (P11).
+# O app Geratrix (branch es/caneleira-mqtt, lib/main_caneleira.dart, no Chrome) enviou o cmd e fez os ack sozinho, sem MQTTX.
+# Prescrição do app: 2 séries x 10 repetições, ADM mínima 60°, velocidade máxima 150 °/s, descanso 10 s. Dados fictícios.
+# Monitor serial resumido: o boot da ESP32 e as linhas repetidas foram omitidas e estão marcadas com [...]. As demais linhas estão como saíram.
+
+Wi-Fi: conectando a Wokwi-GUEST...
+Caneleira P11 - modo SIMULADO (repeticoes ficticias).
+Calibrando o giroscopio: mantenha a perna parada por 2 s...
+Offset do giroscopio: 1.71 graus/s.
+Aguardando a prescricao do app (topico cmd)...
+Wi-Fi conectado: IP 10.10.0.2, sinal -98 dBm.
+MQTT: conectando ao broker...
+MQTT: conectado.
+MQTT: assinaturas cmd ok, ack ok.
+MQTT: estado -> {"online":true,"bat":0,"rssi":-92,"uso":false,"sid":null}
+MQTT: estado -> {"online":true,"bat":0,"rssi":-71,"uso":false,"sid":null}
+MQTT: mensagem recebida em imrea/g01/caneleira/cmd (81 bytes).
+NVS: prescricao salva: smw6yvs8l.
+MQTT: prescricao recebida (sessao smw6yvs8l).
+Sessao smw6yvs8l iniciada: 2 series x 10 reps, ADM min 60 graus, vel max 150 graus/s, descanso 10 s.
+Serie 1 iniciada.
+MQTT: estado -> {"online":true,"bat":0,"rssi":-85,"uso":false,"sid":"smw6yvs8l"}
+Movimento ignorado: caneleira fora da perna.
+[... 39 linhas omitidas: 31 "Movimento ignorado: caneleira fora da perna." e 8 publicações de estado com "uso":false, enquanto o potenciômetro do FSR estava no mínimo ...]
+MQTT: estado -> {"online":true,"bat":0,"rssi":-75,"uso":false,"sid":"smw6yvs8l"}
+Caneleira presa a perna.
+MQTT: estado -> {"online":true,"bat":0,"rssi":-82,"uso":true,"sid":"smw6yvs8l"}
+Movimento ignorado: caneleira fora da perna.
+Serie 1, rep  1/10 | ADM  69.9 | vel 220.1 graus/s | sobe 0.5 s | desce 0.9 s | FORA (vel)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 1, rep  2/10 | ADM  69.0 | vel  77.6 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+MQTT: estado -> {"online":true,"bat":0,"rssi":-76,"uso":true,"sid":"smw6yvs8l"}
+Serie 1, rep  3/10 | ADM  70.3 | vel  78.7 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  4/10 | ADM  68.1 | vel  71.4 graus/s | sobe 1.4 s | desce 1.6 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  5/10 | ADM  73.4 | vel  80.9 graus/s | sobe 1.7 s | desce 2.0 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  6/10 | ADM  45.0 | vel  59.1 graus/s | sobe 1.1 s | desce 1.2 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+MQTT: estado -> {"online":true,"bat":0,"rssi":-79,"uso":true,"sid":"smw6yvs8l"}
+Serie 1, rep  7/10 | ADM  70.2 | vel  78.6 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  8/10 | ADM  65.9 | vel  74.3 graus/s | sobe 1.3 s | desce 1.4 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep  9/10 | ADM  71.0 | vel  74.5 graus/s | sobe 1.4 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 1, rep 10/10 | ADM  50.2 | vel  60.7 graus/s | sobe 1.2 s | desce 1.3 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+  [vibracao] 3 pulsos curtos - fim de serie
+NVS: resumo salvo: smw6yvs8l, serie 1.
+sessao/smw6yvs8l -> {"sid":"smw6yvs8l","status":"descanso","series":[{"n":1,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+Descanso de 10 s.
+MQTT: mensagem recebida em imrea/g01/caneleira/ack (40 bytes).
+MQTT: o app confirmou 1 serie(s) salva(s).
+MQTT: estado -> {"online":true,"bat":0,"rssi":-87,"uso":true,"sid":"smw6yvs8l"}
+  [vibracao] 1 pulso longo - fim do descanso
+Serie 2 iniciada.
+Serie 2, rep  1/10 | ADM  70.3 | vel  78.8 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+MQTT: estado -> {"online":true,"bat":0,"rssi":-80,"uso":true,"sid":"smw6yvs8l"}
+Serie 2, rep  2/10 | ADM  68.2 | vel  71.4 graus/s | sobe 1.4 s | desce 1.6 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  3/10 | ADM  73.6 | vel  80.8 graus/s | sobe 1.7 s | desce 2.0 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  4/10 | ADM  45.1 | vel  59.1 graus/s | sobe 1.1 s | desce 1.2 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 2, rep  5/10 | ADM  70.1 | vel  78.8 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+MQTT: estado -> {"online":true,"bat":0,"rssi":-83,"uso":true,"sid":"smw6yvs8l"}
+Serie 2, rep  6/10 | ADM  65.9 | vel  74.3 graus/s | sobe 1.3 s | desce 1.4 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  7/10 | ADM  71.0 | vel  74.4 graus/s | sobe 1.4 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+Serie 2, rep  8/10 | ADM  50.1 | vel  60.6 graus/s | sobe 1.2 s | desce 1.3 s | FORA (adm)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 2, rep  9/10 | ADM  69.8 | vel 219.9 graus/s | sobe 0.5 s | desce 0.9 s | FORA (vel)
+  [vibracao] 2 pulsos curtos - repeticao fora do padrao
+Serie 2, rep 10/10 | ADM  69.1 | vel  77.5 graus/s | sobe 1.3 s | desce 1.5 s | VALIDA
+  [vibracao] 1 pulso curto - repeticao valida
+  [vibracao] 3 pulsos curtos - fim de serie
+NVS: resumo salvo: smw6yvs8l, serie 2.
+sessao/smw6yvs8l -> {"sid":"smw6yvs8l","status":"concluida","series":[{"n":1,"validas":7,"total":10,"adm_media":65.3,"vel_pico":220.1,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5},{"n":2,"validas":7,"total":10,"adm_media":65.3,"vel_pico":219.9,"desvios":{"adm":2,"vel":1},"t_conc":1.2,"t_exc":1.5}],"ts":null}
+Sessao concluida.
+MQTT: mensagem recebida em imrea/g01/caneleira/ack (40 bytes).
+MQTT: o app confirmou 2 serie(s) salva(s).
+MQTT: sessao toda confirmada; mensagem retida apagada.
+MQTT: estado -> {"online":true,"bat":0,"rssi":-88,"uso":true,"sid":"smw6yvs8l"}
+[... 30 publicações de estado iguais a cada 20 s simulados, com "uso":true, até a simulação ser interrompida ...]
