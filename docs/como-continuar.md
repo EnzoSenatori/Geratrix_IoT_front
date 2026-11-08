@@ -41,7 +41,9 @@ Em 06/11/2026, o firmware conta e classifica as repetições, ignora movimento s
 | P10 — MQTT na ESP32 | Concluída em simulação. `estado`, aviso de desconexão, `cmd`, `sessao/<sid>` e `ack` verificados | Wokwi e MQTTX, em 02/11 |
 | P11 — Operação sem rede | Concluída em simulação. Queda durante a série, recuperação após reinício e sessão iniciada offline verificadas | [Wokwi e MQTTX, em 06/11](../evidencias/p11/) |
 | App — integração MQTT no Geratrix | Não iniciada; as telas são só visuais | — |
-| P12 a P16 — Autonomia, montagem, validação, documentação, relatório | Não iniciadas | — |
+| P12 — Baixo consumo e autonomia | Em andamento: autonomia estimada (06/11); código do botão e do *deep sleep* (08/11), verificado só no computador | Computador, em 08/11 |
+| P13 — Montagem | Em andamento: protoboard montada sem a ESP32 (08/11), em `docs/montagem-protoboard.md` | Bancada, sem energia |
+| P14 a P16 — Validação, documentação, relatório | Protocolo do P14 declarado (06/11); o resto não iniciado | — |
 
 O `README.md` do repositório traz sempre a versão mais recente desta tabela.
 
@@ -50,11 +52,11 @@ O `README.md` do repositório traz sempre a versão mais recente desta tabela.
 Enquanto as peças não chegam, o grupo trabalha no que não depende da placa, nesta ordem. O item 1 foi feito pelo Rafael em 06/11/2026; os itens 2 e 3 estão com o Felipe. Antes de começar um item, avise no grupo para ninguém fazer o mesmo em paralelo.
 
 1. **Operação sem rede (P11).** Validada no Wokwi e no broker do grupo, com o MQTTX representando o app. O roteiro e os resultados estão nas [evidências do P11](../evidencias/p11/), e as limitações aceitas, no README do firmware.
-2. **Botão e baixo consumo (P12), a parte de código.** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão; publicar `{"online":false}` antes de dormir. Tudo testável no Wokwi; só a medição de corrente depende da placa.
+2. **Botão e baixo consumo (P12), a parte de código.** Início da série pelo botão; *deep sleep* com despertar pelo botão ou pelo timer do descanso, sem perder o estado da sessão; publicar `{"online":false}` antes de dormir. Implementado em 08/11/2026 e verificado no computador (`firmware/caneleira/README.md`, seção "Botão e baixo consumo"); falta rodar o teste do Wokwi descrito lá e registrar a evidência. Só a medição de corrente depende da placa.
 3. **Documentação técnica.** Esquema elétrico a partir do circuito completo do Wokwi, lista de componentes com dados de datasheet, autonomia estimada pelas correntes do datasheet (feita em 06/11, em `docs/autonomia.md`), protocolo de validação (P14, declarado em 06/11, em `docs/protocolo-validacao-p14.md`) e as seções do relatório que não dependem de medições.
 4. **Integração MQTT no app**, feita pelo grupo depois da refatoração do Geratrix para Flutter, com um pequeno back-end só para a tela que liga os dois projetos. Pronto quando a tela de registro de exercício envia o `cmd`, mostra o estado da caneleira (inclusive desconectada), preenche as séries conforme chegam, grava antes de publicar o `ack`, e o histórico exibe as sessões gravadas. O app assina `sessao/+`, e não só o `sid` que criou, e confirma toda sessão recebida: a sessão iniciada sem o app (P11) tem `sid` criado pela caneleira, e, sem esse `ack`, a caneleira recusa prescrições novas. O contrato não muda, e um app instalado pode usar a porta 8883, como a ESP32.
 
-Ficam para quando as peças chegarem: eixos e offset reais (P4), ajuste dos limites com movimento real (P6), faixa real do sensor de pressão, corrente medida, montagem (P13) e ensaios (P14).
+Ficam para quando a ESP32 estiver na protoboard: teste de bancada (`docs/montagem-protoboard.md`), eixos e offset reais (P4), ajuste dos limites com movimento real (P6), faixa real do sensor de pressão, corrente medida, transferência para a caixa (P13) e ensaios (P14).
 
 ## Como o repositório está organizado
 
