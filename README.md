@@ -24,7 +24,9 @@ O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a l
 | P10 — MQTT na ESP32 | Concluída em simulação. `estado`, aviso de desconexão, `cmd`, `sessao/<sid>` e `ack` verificados | Wokwi e MQTTX, no broker novo (02/11) |
 | P11 — Operação sem rede | Concluída em simulação. Queda durante a série, recuperação após reinício e início offline com a última prescrição, seguido de sincronização e ACK | Wokwi e MQTTX (06/11), com [evidências](evidencias/p11/) |
 | App — integração MQTT (`cmd`, `sessao`, `ack`, `estado`) | Não iniciada; as telas são HTML/CSS estático, com dados fixos | — |
-| P12 a P16 — Autonomia, montagem, validação, documentação e relatório | Não iniciadas | — |
+| P12 — Baixo consumo e autonomia | Em andamento. Autonomia estimada pelos datasheets (06/11, `docs/autonomia.md`); código do botão e do *deep sleep* implementado (08/11). Falta rodar no Wokwi e medir na placa | Computador (08/11) |
+| P13 — Montagem | Em andamento. Circuito montado numa protoboard de 400 pontos, sem a ESP32, com o roteiro em `docs/montagem-protoboard.md` (08/11). Falta conferir, encaixar a ESP32 e rodar o teste de bancada | Bancada, sem energia |
+| P14 a P16 — Validação, documentação e relatório | Protocolo do P14 declarado (06/11); ensaios não iniciados | — |
 
 Nada foi testado ainda na placa real nem no aplicativo.
 
@@ -36,10 +38,11 @@ docs/
 ├── contrato-mqtt-v1.md      tópicos, payloads, QoS e retenção (aprovado em 12/10)
 ├── inventario-materiais.md  componentes em mãos e a comprar
 ├── repasse-rafael.md        repasse de 13/10, com o passo a passo do teste físico (P4)
+├── montagem-protoboard.md   esquema, posição de cada peça e roteiro antes de ligar (P13)
 └── referencias/             fotos da placa
 firmware/
 ├── caneleira/               código da ESP32 e arquivos do projeto Wokwi
-└── testes/                  teste da lógica no computador
+└── testes/                  teste da lógica no computador e teste de bancada da placa
 app/                         telas do Geratrix (HTML/CSS), incluindo registro de exercício e histórico
 evidencias/
 └── p1-mqtt/                 capturas do teste manual do contrato
@@ -53,7 +56,7 @@ O enunciado da disciplina e a proposta do grupo não são versionados enquanto o
 
 **Lógica no computador.** Em `firmware/testes/`, `g++ -std=c++17 -I../caneleira teste_processamento.cpp -o teste && ./teste` percorre o roteiro simulado e confere cada série.
 
-**Firmware na placa.** Instale a Arduino IDE, o pacote de placas ESP32 da Espressif e a biblioteca Adafruit MPU6050. Ligue a MPU-6050 à ESP32 (VCC → 3V3, GND → GND, SDA → GPIO 21, SCL → GPIO 22), abra `firmware/caneleira/caneleira.ino`, grave e acompanhe o monitor serial em 115200 baud. O procedimento completo está na seção 3.3 de `docs/repasse-rafael.md`.
+**Firmware na placa.** Monte o circuito como em `docs/montagem-protoboard.md` e grave primeiro `firmware/testes/teste_bancada_esp32/`, que confere cada peça. Depois, instale a Arduino IDE, o pacote de placas ESP32 da Espressif e a biblioteca Adafruit MPU6050. Ligue a MPU-6050 à ESP32 (VCC → 3V3, GND → GND, SDA → GPIO 21, SCL → GPIO 22), abra `firmware/caneleira/caneleira.ino`, grave e acompanhe o monitor serial em 115200 baud. O procedimento completo está na seção 3.3 de `docs/repasse-rafael.md`.
 
 **Aplicativo.** Abra `app/index.html` no navegador para o fluxo completo, ou `app/checkin-exercicio.html` e `app/historico.html` para as duas telas da caneleira.
 

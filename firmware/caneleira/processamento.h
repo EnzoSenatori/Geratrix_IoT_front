@@ -223,6 +223,8 @@ struct Sessao {
   ResumoSerie resumos[MAX_SERIES];
   float fimDescanso;  // instante (s) em que o descanso termina
   DetectorRepeticao det;
+  bool porBotao;      // P12: cada série só começa quando o botão é apertado
+  bool esperaBotao;   // série atual aguardando o botão (status segue em_execucao)
 };
 
 // Eventos devolvidos a cada amostra; podem vir combinados (ex.: repetição + fim de série).
@@ -234,6 +236,7 @@ enum : uint8_t {
   EV_FIM_DESCANSO = 16,
   EV_SESSAO_CONCLUIDA = 32,
   EV_CALIBRADO = 64,
+  EV_SERIE_LIBERADA = 128,  // P12: o botão começou a série que aguardava
 };
 
 // Confere se a prescrição recebida pelo cmd é utilizável. São limites técnicos de
@@ -247,8 +250,9 @@ inline bool prescricaoValida(const Prescricao& p) {
          p.descanso <= 600;
 }
 
-// Começa a sessão pela primeira série, com a prescrição recebida.
-inline void iniciarSessao(Sessao& s, const Prescricao& p, float thetaAtual) {
+// Começa a sessão pela primeira série, com a prescrição recebida. Com porBotao, a série
+// fica aguardando o botão antes de contar repetições.
+inline void iniciarSessao(Sessao& s, const Prescricao& p, float thetaAtual, bool porBotao = false) {
   s = Sessao{};
   s.p = p;
   if (s.p.series < 1) s.p.series = 1;
@@ -256,6 +260,8 @@ inline void iniciarSessao(Sessao& s, const Prescricao& p, float thetaAtual) {
   if (s.p.reps < 1) s.p.reps = 1;
   for (uint8_t i = 0; i < MAX_SERIES; i++) s.resumos[i].n = i + 1;
   s.status = StatusSessao::EM_EXECUCAO;
+  s.porBotao = porBotao;
+  s.esperaBotao = porBotao;
   reiniciarDetector(s.det, thetaAtual);
 }
 
@@ -307,13 +313,33 @@ inline uint8_t processarAmostra(Sessao& s, float theta, float omega, float t, fl
       if (t < s.fimDescanso) return 0;
       s.serie++;
       s.status = StatusSessao::EM_EXECUCAO;
+      s.esperaBotao = s.porBotao;
       reiniciarDetector(s.det, theta);
       return EV_FIM_DESCANSO;
 
     case StatusSessao::EM_EXECUCAO:
+      if (s.esperaBotao) return 0;  // movimento antes do botão não conta
       if (!detectarRepeticao(s.det, theta, omega, dt, uso, rep)) return 0;
       if (!rep.uso) return EV_REP_SEM_USO;  // sem uso efetivo, o movimento não conta
       return registrarRepeticao(s, rep, t);
+  }
+  return 0;
+}
+
+// Trata um aperto do botão (P12). No descanso, encerra-o e começa a próxima série na hora;
+// numa série que aguarda o botão, libera a contagem. Nos demais estados, não faz nada.
+inline uint8_t apertarBotao(Sessao& s, float theta) {
+  if (s.status == StatusSessao::DESCANSO) {
+    s.serie++;
+    s.status = StatusSessao::EM_EXECUCAO;
+    s.esperaBotao = false;
+    reiniciarDetector(s.det, theta);
+    return EV_FIM_DESCANSO | EV_SERIE_LIBERADA;
+  }
+  if (s.status == StatusSessao::EM_EXECUCAO && s.esperaBotao) {
+    s.esperaBotao = false;
+    reiniciarDetector(s.det, theta);
+    return EV_SERIE_LIBERADA;
   }
   return 0;
 }
@@ -368,12 +394,14 @@ struct Caneleira {
   float thetaAcc;  // graus, só acelerômetro
   float theta;     // graus, filtrado
   float omega;     // °/s, já sem offset
+  bool inicioPeloBotao;  // P12: cada série espera o botão
 };
 
 // Prepara o processamento. Com uma prescrição (séries > 0), a sessão começa assim que o
 // offset do giroscópio for medido; sem ela, aguarda a prescrição pelo cmd.
-inline void iniciarCaneleira(Caneleira& c, const Prescricao& p) {
+inline void iniciarCaneleira(Caneleira& c, const Prescricao& p, bool inicioPeloBotao = false) {
   c = Caneleira{};
+  c.inicioPeloBotao = inicioPeloBotao;
   c.prescricao = p;
   c.sessao.status = StatusSessao::AGUARDANDO;
 }
@@ -381,7 +409,7 @@ inline void iniciarCaneleira(Caneleira& c, const Prescricao& p) {
 // Recebe a prescrição do app: começa a sessão já, ou logo após a calibração.
 inline void receberPrescricao(Caneleira& c, const Prescricao& p) {
   c.prescricao = p;
-  if (c.calib.pronta) iniciarSessao(c.sessao, p, c.theta);
+  if (c.calib.pronta) iniciarSessao(c.sessao, p, c.theta, c.inicioPeloBotao);
 }
 
 // Processa uma leitura da IMU (chamada a 100 Hz): calibração, ângulo, repetição e sessão.
@@ -393,7 +421,9 @@ inline uint8_t processarLeitura(Caneleira& c, const AmostraImu& a, float dt, boo
   if (!c.calib.pronta) {
     if (!acumularCalibracao(c.calib, omegaBruto)) return 0;
     c.theta = atualizarFiltro(c.filtro, c.thetaAcc, 0.0f, dt);
-    if (c.prescricao.series > 0) iniciarSessao(c.sessao, c.prescricao, c.theta);  // senão, aguarda o cmd
+    if (c.prescricao.series > 0) {  // senão, aguarda o cmd
+      iniciarSessao(c.sessao, c.prescricao, c.theta, c.inicioPeloBotao);
+    }
     return EV_CALIBRADO;
   }
 

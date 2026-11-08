@@ -2,7 +2,7 @@
 
 **Lista de materiais, versão 1 (02/11/2026).** O grupo adotou um protótipo enxuto (decisão D15 do guia): alimentação por power bank, pelo cabo USB da ESP32, e montagem em mini protoboard, sem bateria LiPo nem circuito soldado. O motivo é a falta de tempo de todos para solda e para o circuito de bateria.
 
-Em mãos: ESP32 DevKit V1 de 30 pinos e cabo USB-A ↔ Micro-USB, com o Rafael; power bank e caneleira. Falta confirmar que o cabo transmite dados e qual é o chip USB-serial da placa. Grande parte dos eletrônicos pode vir do laboratório da faculdade; o que faltar se compra numa loja nacional ou na Santa Ifigênia, de olho no prazo da banca (20/11). Esta lista não registra compras realizadas.
+Em mãos: ESP32 DevKit V1 de 30 pinos e cabo USB-A ↔ Micro-USB, com o Rafael; power bank e caneleira. Falta confirmar que o cabo transmite dados e qual é o chip USB-serial da placa. Grande parte dos eletrônicos pode vir do laboratório da faculdade; o que faltar se compra numa loja nacional ou na Santa Ifigênia, de olho no prazo da banca (20/11). Esta lista não registra compras realizadas. Em 07/11, o Vitor tinha em mãos as peças da montagem (MPU-6050, FSR, motor, BC337, 1N4148, resistores, botão, protoboard e jumpers) e montou o circuito (`docs/montagem-protoboard.md`).
 
 ## Lista, versão 1
 
@@ -17,7 +17,7 @@ Em mãos: ESP32 DevKit V1 de 30 pinos e cabo USB-A ↔ Micro-USB, com o Rafael; 
 | 7 | Diodo 1N4148 | 2 | Protege o transistor do pico do motor | A obter |
 | 8 | Resistores de 1 kΩ e 10 kΩ | 1 de cada | Base do transistor e divisor do FSR | A obter |
 | 9 | Push button 12 × 12 mm | 2 | Início da série e despertar; um é reserva | A obter |
-| 10 | Mini protoboard de 170 pontos, com adesivo | 1 | Montagem sem solda, dentro da caixa | A obter |
+| 10 | Mini protoboard de 170 pontos, com adesivo | 1 | Montagem sem solda, dentro da caixa | Substituída por uma de 400 pontos, já montada (08/11) |
 | 11 | Jumpers de 20 cm, macho-fêmea e macho-macho | 40 de cada | Ligações; os macho-fêmea levam o FSR e o motor até a caixa | A obter |
 | 12 | Power bank de 5000 mAh ou mais, saída USB-A | 1 | Alimentação autônoma pelo cabo USB | Em mãos |
 | 13 | Medidor USB de tensão e corrente | 1 | Consumo para o cálculo de autonomia (P12) | A obter |
