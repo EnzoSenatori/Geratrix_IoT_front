@@ -84,7 +84,7 @@ void loop() {
       angulo = atan2f(ax, az) * 57.2958f;
     }
     Serial.printf("FSR %4u mV %-6s | angulo %6.1f graus | botao %s\n",
-                  fsrMv, fsrMv >= 1200 ? "PRESA" : (fsrMv < 800 ? "solta" : "-"),
+                  (unsigned)fsrMv, fsrMv >= 1200 ? "PRESA" : (fsrMv < 800 ? "solta" : "-"),
                   angulo, botao ? "solto" : "APERTADO");
   }
 }
