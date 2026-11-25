@@ -1,6 +1,6 @@
 # Firmware da caneleira
 
-**Estado em 06/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. O P10 (comunicação MQTT) e o P11 (queda, persistência e início offline) foram verificados em simulação no Wokwi e no MQTTX. A validação na placa real segue pendente. [Evidências do P11](../../evidencias/p11/)
+**Estado em 06/11/2026.** O P3 (leitura da IMU a 100 Hz) foi verificado no Wokwi em 13/10. Os passos P5 a P7 (filtro, contagem e classificação das repetições, resumo da série) estão implementados, verificados em simulação no computador e executados no Wokwi em 01/11/2026, do início ao fim da sessão. O P8 (uso efetivo) e o P9 (biofeedback) foram verificados no Wokwi em 02/11/2026, com um potenciômetro no lugar do FSR e um LED no lugar do motor. O P10 (comunicação MQTT) e o P11 (queda, persistência e início offline) foram verificados em simulação no Wokwi e no MQTTX. Em 08/11/2026, a parte de código do P12 (série iniciada pelo botão e *deep sleep*) foi implementada e verificada no computador; falta rodá-la no Wokwi e na placa. A validação na placa real segue pendente. [Evidências do P11](../../evidencias/p11/)
 
 ## Arquivos
 
@@ -10,6 +10,8 @@
 | `processamento.h` | Lógica sem dependência do Arduino: calibração do giroscópio, filtro complementar, máquina de estados, classificação, séries e JSON |
 | `sinal_simulado.h` | Gerador de repetições fictícias com resultado conhecido |
 | `biofeedback.h` | Padrões de vibração tocados sem bloquear a amostragem (lógica pura) |
+| `botao.h` | Filtro de trepidação do botão, sem bloquear a amostragem (lógica pura, P12) |
+| `energia.h` | Regras de quando dormir em *deep sleep* e por quanto tempo (lógica pura, P12) |
 | `certificado_ca.h` | Certificado raiz público do broker (DigiCert Global Root G2, válido até 2038), para a conexão TLS |
 | `segredos.exemplo.h` | Modelo das credenciais. Copie como `segredos.h`, que o Git ignora, e preencha as senhas |
 | `diagram.json`, `libraries.txt` | Circuito e bibliotecas do projeto Wokwi |
@@ -32,9 +34,11 @@ Os GPIOs 34 e 35 estão no ADC1, o único utilizável com o Wi-Fi ligado; o 33 p
 
 1. Abra o [projeto P3 no Wokwi](https://wokwi.com/projects/477822826125465601), use **Save a copy** para ter a sua cópia e substitua o `diagram.json` pelo desta pasta.
 2. Substitua todo o conteúdo de `sketch.ino` pelo de `caneleira.ino`.
-3. Crie os arquivos `processamento.h`, `sinal_simulado.h`, `biofeedback.h` e `certificado_ca.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes. Substitua também o `libraries.txt`.
+3. Crie os arquivos `processamento.h`, `sinal_simulado.h`, `biofeedback.h`, `botao.h`, `energia.h` e `certificado_ca.h` (seta ▾ ao lado das abas → **New file...**) e cole neles o conteúdo dos arquivos desta pasta, com os mesmos nomes. Substitua também o `libraries.txt`.
 4. Crie o `segredos.h` com o conteúdo de `segredos.exemplo.h`. Salve o projeto ainda com o marcador no lugar da senha; só então digite a senha do `teste_g01`, rode e **não salve mais**: o projeto do Wokwi é público.
 5. Clique em ▶. As alterações não precisam ser salvas para rodar. Com `USAR_REDE = false`, o firmware funciona sem Wi-Fi nem broker.
+
+Com `INICIO_PELO_BOTAO = true` (padrão desde o P12), cada série espera um clique no botão verde: o monitor mostra `Serie N: aperte o botao para comecar.` Para repetir os roteiros anteriores sem clicar, ponha `INICIO_PELO_BOTAO = false`.
 
 Com `USAR_SINAL_SIMULADO = true`, o sensor virtual é ignorado e o firmware processa o roteiro fictício. A primeira série termina em cerca de 45 s, e a sessão completa, em menos de 3 min.
 
@@ -67,6 +71,31 @@ O MQTTX Web faz o papel do app. Conexão: `wss://z2f0d126.ala.eu-central-1.emqxs
 **Queda de conexão (P11).** Com uma sessão em andamento, abra no MQTTX uma segunda conexão com o Client ID `caneleira-01`, o mesmo da ESP32, durante uma série. O broker derruba a ESP32, e o monitor mostra `MQTT: conexao perdida`. Desconecte essa segunda conexão antes do fim da série. Ao terminar a série, o serial informa que o resumo ficou pendente. No descanso, a ESP32 reconecta e o resumo acumulado chega em `sessao/<sid>` na conexão principal do MQTTX. A contagem segue durante a queda. [Roteiro dos demais testes do P11](../../evidencias/p11/)
 
 Se o `cmd` não fizer efeito, o monitor diz onde parou: sem `MQTT: mensagem recebida`, a mensagem não chegou à ESP32 (confira se o MQTTX recebe o próprio envio; se não recebe, desconecte e conecte o MQTTX de novo); com ela, mas sem `prescricao recebida`, o conteúdo foi recusado e a linha seguinte diz o motivo; `MQTT: conexao perdida (codigo -4)` indica falta de resposta do broker, e `-3`, conexão fechada, por exemplo por outro cliente com o mesmo ID.
+
+## Botão e baixo consumo (P12)
+
+**Botão (GPIO 33, ligado ao GND, com pull-up interno).** O firmware lê o pino a cada volta do `loop()` e só aceita o aperto depois de 30 ms estáveis (`botao.h`). Um aperto:
+
+| Quando | Efeito |
+|---|---|
+| Série aguardando o botão (início da sessão ou fim do descanso) | Começa a contar as repetições; 1 pulso curto confirma |
+| Durante o descanso | Encerra o descanso e começa a próxima série na hora; o pulso longo de fim de descanso confirma |
+| Sem sessão, com prescrição salva e sem broker (partida offline do P11) | Começa a sessão offline sem esperar os 15 s, assim que a caneleira estiver presa; o mesmo aperto já libera a série 1 |
+| Sem sessão e sem prescrição | Nada; o monitor lembra que falta o `cmd` |
+| Com a ESP32 dormindo | Acorda a ESP32 (ext0) |
+
+Movimento antes do botão não conta como repetição. Enquanto a série aguarda o botão, o `status` publicado continua `em_execucao`: o contrato não muda.
+
+**Deep sleep (`energia.h`).** Só com `USAR_REDE = true`, porque depende da gravação das séries na memória não volátil (P11). A ESP32 dorme em dois casos:
+
+| Caso | Condição | Acorda por |
+|---|---|---|
+| Descanso | Faltam 20 s ou mais de descanso | Timer, 4 s antes do fim (partida e 2 s de calibração), ou botão |
+| Ociosa | Sem sessão ou com a sessão concluída, 5 min sem atividade (botão, mensagem MQTT, evento da sessão ou mudança do uso) | Só o botão |
+
+Nunca dorme durante uma série, nem enquanto calibra, toca uma vibração ou espera o `ack` (até 5 s depois do fim da série, com o broker conectado). Antes de dormir, publica `{"online":false}` retido em `estado`, como o contrato pede, desliga o Wi-Fi, põe a MPU-6050 em *sleep* e prende a base do transistor em LOW. Ao acordar do descanso, recupera a sessão gravada, recalibra o giroscópio (perna parada por 2 s), toca o pulso longo e segue para a próxima série; se acordou pelo botão, a série já começa. Resumos ainda sem `ack` são reenviados na reconexão, como no P11.
+
+**Teste no Wokwi.** Com o MQTTX, envie um `cmd` com `"descanso":30` e clique no botão para começar a série 1. No fim da série, o monitor mostra `P12: deep sleep (descanso)` e, pouco antes do fim dos 30 s, `P12: acordou pelo timer.`, seguido de `NVS: resumo recuperado` e `Serie 2: aperte o botao para comecar.` Clicar no botão durante o sono acorda a ESP32 na hora.
 
 ## Roteiro simulado (uma série, repetida sem fim)
 
@@ -112,7 +141,9 @@ cd firmware/testes
 g++ -std=c++17 -Wall -Wextra -I../caneleira teste_processamento.cpp -o teste && ./teste
 ```
 
-O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângulo filtrado (máximo observado: 1,7°) e o resultado de cada série. Confere também a histerese do uso, o reinício do detector após o descanso, a validação da prescrição e a espera pelo `cmd` depois da calibração.
+O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângulo filtrado (máximo observado: 1,7°) e o resultado de cada série. Confere também a histerese do uso, o reinício do detector após o descanso, a validação da prescrição e a espera pelo `cmd` depois da calibração. Desde o P12, confere o filtro do botão, a sessão completa com cada série iniciada pelo botão, o botão no descanso e as regras do *deep sleep*.
+
+**Teste de bancada.** `firmware/testes/teste_bancada_esp32/` confere cada peça da protoboard na ESP32 real, sem biblioteca e com os mesmos pinos. É o primeiro programa a gravar na placa; o roteiro está em `docs/montagem-protoboard.md`.
 
 ## Limites desta versão
 
@@ -120,7 +151,10 @@ O teste percorre o roteiro inteiro e confere o offset removido, o erro do ângul
 - A persistência é feita ao terminar cada série. Se houver um reinício no meio da série, as repetições parciais são descartadas e a próxima execução retoma a partir da última série concluída.
 - A caneleira mantém uma sessão pendente por vez e aguarda o ACK final antes de aceitar outra. A partida automática sem broker exige prescrição salva e uso efetivo.
 - A sessão iniciada sem broker recebe um `sid` criado pela caneleira, sem ligação com o residente. O app precisa assinar `sessao/+` e confirmar toda sessão recebida: enquanto uma sessão não for toda confirmada, a caneleira recusa `cmd` novo, inclusive depois de reiniciar. No MQTTX, basta publicar o `ack` com o `sid` novo. Uma correção foi testada no computador em 06/11 e não aplicada, porque muda o contrato: o resumo levaria o campo `origem`, com o `sid` da prescrição usada.
-- A partida sem broker começa 15 s depois de ligar. Numa rede lenta, a sessão pode começar com a prescrição antiga, e o `cmd` do gestor só é aceito ao fim dela. Aumentar `ESPERA_BROKER_NA_PARTIDA_MS` reduz o risco; com o P12, o botão pode virar o gatilho.
+- A partida sem broker começa 15 s depois de ligar. Numa rede lenta, a sessão pode começar com a prescrição antiga, e o `cmd` do gestor só é aceito ao fim dela. Aumentar `ESPERA_BROKER_NA_PARTIDA_MS` reduz o risco; desde o P12, um aperto do botão antecipa a partida offline.
+- **P12, só verificado no computador.** A lógica do botão e do *deep sleep* passou no teste do computador, e o `.ino` passou por uma checagem de sintaxe com cabeçalhos substitutos das bibliotecas; ainda não foi compilado na Arduino IDE nem rodou no Wokwi ou na placa. Pontos a observar: se o power bank se desliga com a ESP32 dormindo (`docs/autonomia.md`), se a base do motor fica em LOW durante o sono e quanto tempo o Wi-Fi e o TLS levam para voltar depois de acordar.
+- **Dormindo, a caneleira não recebe o `cmd`,** que não é retido. Antes de enviar a prescrição, acorde-a pelo botão; o app vê `"online":true` no `estado` quando ela estiver pronta. O `ack` que chegar durante o sono se perde, mas o resumo é reenviado ao acordar e o app confirma de novo.
+- Os tempos do P12 (`DESCANSO_MIN_PARA_DORMIR_S`, `ANTECEDENCIA_DESPERTAR_S`, `OCIOSO_PARA_DORMIR_MS`, `ESPERA_ACK_ANTES_DE_DORMIR_MS`) são provisórios.
 - `TESTAR_REINICIO_P11` e `TESTAR_OFFLINE_P11` existem só para os testes no Wokwi: ficam em `false` e podem ser removidas antes da placa real.
 - `ts` sai `null`: a ESP32 ainda não obtém a hora da rede (NTP).
 - A vibração foi vista num LED; a distinção dos padrões na perna e a intensidade dependem do motor real.

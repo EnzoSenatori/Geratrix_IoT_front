@@ -1,8 +1,10 @@
-// Caneleira instrumentada — firmware da ESP32 (P3 a P11).
+// Caneleira instrumentada — firmware da ESP32 (P3 a P12).
 // Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
 // ao fim de cada série, publica o resumo no tópico sessao/<sid> do contrato MQTT.
 // Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
 // fictícias cujo resultado esperado é conhecido (ver sinal_simulado.h).
+// P12: cada série começa pelo botão (GPIO 33), e a ESP32 dorme (deep sleep) nos descansos
+// longos e quando fica ociosa, acordando pelo timer ou pelo botão.
 
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
@@ -12,10 +14,15 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <Wire.h>
+#include <driver/gpio.h>
+#include <driver/rtc_io.h>
 #include <esp_random.h>
+#include <esp_sleep.h>
 
 #include "biofeedback.h"
+#include "botao.h"
 #include "certificado_ca.h"
+#include "energia.h"
 #include "processamento.h"
 #include "segredos.h"
 #include "sinal_simulado.h"
@@ -39,6 +46,10 @@ constexpr uint8_t CANAL_PWM_MOTOR = 0;       // usado só pelo core 2.x da ESP32
 constexpr uint8_t PIN_BATERIA = 35;          // divisor 2 × 100 kΩ (no Wokwi, o potenciômetro "bateria")
 constexpr float BATERIA_VAZIA_MV = 3300.0f;  // LiPo considerada vazia (aproximação linear)
 constexpr float BATERIA_CHEIA_MV = 4200.0f;  // LiPo cheia
+constexpr uint8_t PIN_BOTAO = 33;            // botão para o GND, pull-up interno (no Wokwi, "botao")
+constexpr bool INICIO_PELO_BOTAO = true;     // P12: cada série só começa quando o botão é apertado
+constexpr bool USAR_DEEP_SLEEP = USAR_REDE;  // P12: depende da gravação das séries na NVS (P11)
+constexpr uint32_t ESPERA_ACK_ANTES_DE_DORMIR_MS = 5000;  // dá tempo ao app de confirmar a série
 constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
 constexpr float DT_S = PERIODO_US / 1000000.0f;
 
@@ -95,6 +106,16 @@ GeradorSimulado gerador = {12345u, 0.0f};
 uint32_t proximaLeituraUs = 0;
 uint32_t amostras = 0;
 uint32_t atrasos = 0;
+Botao botao;
+uint32_t ultimaAtividadeMs = 0;       // P12: base do tempo ocioso
+bool inicioOfflineAgora = false;      // o botão pediu a partida offline sem esperar os 15 s
+bool liberarSerieNaPartida = false;   // acordou pelo botão no descanso: a série já começa
+
+// Sobrevive ao deep sleep (memória RTC): por que a ESP32 foi dormir.
+RTC_DATA_ATTR uint8_t motivoUltimoSono = (uint8_t)MotivoSono::NENHUM;
+
+// Registra atividade: adia o deep sleep por ociosidade e a espera pelo ack.
+void marcarAtividade() { ultimaAtividadeMs = millis(); }
 
 // Lê a próxima amostra: do roteiro simulado ou da MPU-6050 real.
 bool obterLeitura(AmostraImu& a) {
@@ -121,6 +142,7 @@ bool usoEfetivo() {
   if (agora != antes) {
     Serial.println(agora ? "Caneleira presa a perna." : "Caneleira solta: movimentos nao serao contados.");
     estadoPendente = true;
+    marcarAtividade();
   }
   return agora;
 }
@@ -251,7 +273,7 @@ void recuperarSessao() {
   }
 
   Sessao& s = caneleira.sessao;
-  iniciarSessao(s, salva.prescricao, caneleira.theta);
+  iniciarSessao(s, salva.prescricao, caneleira.theta, INICIO_PELO_BOTAO);
   for (uint8_t i = 0; i < salva.concluidas; i++) s.resumos[i] = salva.resumos[i];
   s.serie = salva.concluidas - 1;
   const bool concluida = salva.concluidas == salva.prescricao.series;
@@ -301,14 +323,15 @@ void anunciarSessao() {
                 "vel max %.0f graus/s, descanso %u s.\n",
                 s.p.sid, (unsigned)s.p.series, (unsigned)s.p.reps, s.p.admMin, s.p.velMax,
                 (unsigned)s.p.descanso);
-  Serial.println("Serie 1 iniciada.");
+  Serial.println(s.esperaBotao ? "Serie 1: aperte o botao para comecar." : "Serie 1 iniciada.");
   estadoPendente = true;
+  marcarAtividade();
 }
 
 // Usa os parâmetros salvos uma vez por partida sem broker, com um SID novo.
 void iniciarOfflineSeNecessario(bool emUso) {
   if (!inicioOfflinePendente || !caneleira.calib.pronta || !emUso ||
-      millis() - inicioEsperaBrokerMs < ESPERA_BROKER_NA_PARTIDA_MS) return;
+      (!inicioOfflineAgora && millis() - inicioEsperaBrokerMs < ESPERA_BROKER_NA_PARTIDA_MS)) return;
 
   Prescricao offline = ultimaPrescricao;
   const unsigned long parteAlta = esp_random();
@@ -319,6 +342,8 @@ void iniciarOfflineSeNecessario(bool emUso) {
   Serial.printf("P11: iniciando offline com a prescricao salva %s; novo sid %s.\n",
                 ultimaPrescricao.sid, offline.sid);
   receberPrescricao(caneleira, offline);
+  if (inicioOfflineAgora) apertarBotao(caneleira.sessao, caneleira.theta);  // o mesmo aperto já libera a série 1
+  inicioOfflineAgora = false;
   anunciarSessao();
 }
 
@@ -393,6 +418,7 @@ void tratarAck(const char* sid, int recebidas) {
 // Recebe as mensagens assinadas (cmd e ack) e encaminha cada uma ao seu tratamento.
 void aoReceberMensagem(char* topico, byte* payload, unsigned int tamanho) {
   Serial.printf("MQTT: mensagem recebida em %s (%u bytes).\n", topico, tamanho);
+  marcarAtividade();
   JsonDocument doc;
   if (deserializeJson(doc, payload, tamanho)) {
     Serial.printf("MQTT: JSON invalido em %s; ignorado.\n", topico);
@@ -495,7 +521,18 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
   }
   if (ev & EV_FIM_DESCANSO) {
     sinalizar(Padrao::FIM_DESCANSO, "1 pulso longo - fim do descanso");
-    Serial.printf("Serie %u iniciada.\n", (unsigned)(s.serie + 1));
+    if (s.esperaBotao) Serial.printf("Serie %u: aperte o botao para comecar.\n", (unsigned)(s.serie + 1));
+    else if (!(ev & EV_SERIE_LIBERADA)) Serial.printf("Serie %u iniciada.\n", (unsigned)(s.serie + 1));
+  }
+  if (ev & EV_SERIE_LIBERADA) {
+    Serial.printf("Serie %u iniciada pelo botao.\n", (unsigned)(s.serie + 1));
+    // No descanso, o pulso longo já confirmou o aperto; na espera, confirma com um curto.
+    if (!(ev & EV_FIM_DESCANSO)) sinalizar(Padrao::REP_VALIDA, "1 pulso curto - serie liberada");
+  }
+  if ((ev & EV_FIM_DESCANSO) && liberarSerieNaPartida) {  // acordou pelo botão no descanso
+    liberarSerieNaPartida = false;
+    const uint8_t liberada = apertarBotao(caneleira.sessao, caneleira.theta);
+    if (liberada) tratarEventos(liberada, rep);
   }
   if (ev & EV_SESSAO_CONCLUIDA) {
     Serial.println("Sessao concluida.");
@@ -506,9 +543,100 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
   }
 }
 
+// Trata um aperto do botão: começa a série que aguarda, encerra o descanso ou antecipa
+// a partida offline com a prescrição salva.
+void tratarBotao() {
+  marcarAtividade();
+  Serial.println("Botao apertado.");
+  Sessao& s = caneleira.sessao;
+  if (!caneleira.calib.pronta) {
+    Serial.println("  Ainda calibrando: mantenha a perna parada e aperte depois.");
+    return;
+  }
+  if (s.status == StatusSessao::AGUARDANDO) {
+    if (inicioOfflinePendente) {
+      inicioOfflineAgora = true;
+      Serial.println("  Partida offline pedida: comeca assim que a caneleira estiver presa.");
+    } else {
+      Serial.println("  Sem prescricao: aguardando o cmd do app.");
+    }
+    return;
+  }
+  Repeticao nenhuma{};
+  const uint8_t ev = apertarBotao(s, caneleira.theta);
+  if (ev) tratarEventos(ev, nenhuma);
+}
+
+// Lê o botão sem bloquear (debounce em botao.h) e trata cada aperto.
+void atualizarBotaoFisico() {
+  if (atualizarBotao(botao, digitalRead(PIN_BOTAO) == LOW, millis())) tratarBotao();
+}
+
+// Prepara os periféricos e entra em deep sleep. Acorda pelo botão e, no descanso, também
+// pelo timer. A RAM se perde: a partida seguinte recupera a sessão da NVS (P11).
+void dormir(const DecisaoSono& d) {
+  const bool noDescanso = d.motivo == MotivoSono::DESCANSO;
+  Serial.printf("P12: deep sleep (%s); acorda pelo botao%s.\n", noDescanso ? "descanso" : "ocioso",
+                noDescanso ? " ou pelo timer" : "");
+  if (noDescanso) Serial.printf("P12: timer de %.1f s.\n", d.dormirMs / 1000.0f);
+
+  // Contrato: publicar offline antes de desligar normalmente.
+  if (mqtt.connected()) {
+    mqtt.publish(TOPICO_ESTADO, ESTADO_OFFLINE, true);
+    mqtt.loop();
+    mqtt.disconnect();
+  }
+  if (USAR_REDE) {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
+  if (!USAR_SINAL_SIMULADO) imu.enableSleep(true);  // 3,8 mA -> 5 µA (docs/autonomia.md)
+
+  // Motor desligado e base do transistor presa em LOW durante o sono.
+  acionarMotor(false);
+  gpio_hold_en((gpio_num_t)PIN_MOTOR);
+  gpio_deep_sleep_hold_en();
+
+  // Botão: GPIO 33 é pino RTC; o pull-up precisa continuar ligado durante o sono.
+  rtc_gpio_pullup_en((gpio_num_t)PIN_BOTAO);
+  rtc_gpio_pulldown_dis((gpio_num_t)PIN_BOTAO);
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_BOTAO, 0);
+  if (noDescanso) esp_sleep_enable_timer_wakeup((uint64_t)d.dormirMs * 1000ULL);
+
+  motivoUltimoSono = (uint8_t)d.motivo;
+  Serial.flush();
+  esp_deep_sleep_start();
+}
+
+// Confere, a cada amostra, se a ESP32 pode dormir agora (regras em energia.h).
+void verificarSono() {
+  if (!USAR_DEEP_SLEEP) return;
+  const Sessao& s = caneleira.sessao;
+  const uint32_t ociosoMs = millis() - ultimaAtividadeMs;
+  const bool pendente = limpezaPendente || seriesConcluidas(s) > seriesConfirmadas;
+  const bool esperandoAck = mqtt.connected() && pendente && ociosoMs < ESPERA_ACK_ANTES_DE_DORMIR_MS;
+  const bool ocupada = !caneleira.calib.pronta || vibracao.tamanho > 0 || esperandoAck || botao.estavel;
+  const DecisaoSono d = decidirSono(s, caneleira.tempo, ocupada, ociosoMs);
+  if (d.motivo != MotivoSono::NENHUM) dormir(d);
+}
+
 // Inicializa o monitor serial, o sensor (no modo real) e o processamento.
 void setup() {
   Serial.begin(115200);
+
+  // P12: de onde a ESP32 está voltando e liberação dos pinos usados durante o sono.
+  const esp_sleep_wakeup_cause_t causa = esp_sleep_get_wakeup_cause();
+  const bool acordou = causa == ESP_SLEEP_WAKEUP_TIMER || causa == ESP_SLEEP_WAKEUP_EXT0;
+  const MotivoSono dormiuPor = acordou ? (MotivoSono)motivoUltimoSono : MotivoSono::NENHUM;
+  motivoUltimoSono = (uint8_t)MotivoSono::NENHUM;
+  gpio_hold_dis((gpio_num_t)PIN_MOTOR);
+  gpio_deep_sleep_hold_dis();
+  rtc_gpio_deinit((gpio_num_t)PIN_BOTAO);
+  pinMode(PIN_BOTAO, INPUT_PULLUP);
+  iniciarBotao(botao, digitalRead(PIN_BOTAO) == LOW, millis());
+  if (acordou) {
+    Serial.printf("P12: acordou pelo %s.\n", causa == ESP_SLEEP_WAKEUP_TIMER ? "timer" : "botao");
+  }
   memoriaDisponivel = memoria.begin("caneleira", false);
   if (!memoriaDisponivel) {
     Serial.println("NVS: falha ao abrir a memoria.");
@@ -544,8 +672,15 @@ void setup() {
     imu.setFilterBandwidth(MPU6050_BAND_21_HZ);
   }
 
-  iniciarCaneleira(caneleira, ESPERAR_CMD ? Prescricao{} : PRESCRICAO_TESTE);
+  iniciarCaneleira(caneleira, ESPERAR_CMD ? Prescricao{} : PRESCRICAO_TESTE, INICIO_PELO_BOTAO);
   recuperarSessao();
+  if (dormiuPor == MotivoSono::DESCANSO && caneleira.sessao.status == StatusSessao::DESCANSO) {
+    // O descanso terminou durante o sono (ou o botão o encerrou): a próxima série começa
+    // logo depois da calibração.
+    caneleira.sessao.fimDescanso = 0;
+    liberarSerieNaPartida = causa == ESP_SLEEP_WAKEUP_EXT0;
+  }
+  marcarAtividade();
   inicioEsperaBrokerMs = millis();
   inicioOfflinePendente = USAR_REDE && caneleira.sessao.status == StatusSessao::AGUARDANDO &&
                           prescricaoValida(ultimaPrescricao);
@@ -553,8 +688,8 @@ void setup() {
                               strcmp(ultimaPrescricao.sid, SID_SEMENTE_P11) == 0 &&
                               caneleira.sessao.status != StatusSessao::CONCLUIDA;
   if (simularBrokerIndisponivel) Serial.println("P11 teste: broker simulado indisponivel.");
-  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P11 - modo SIMULADO (repeticoes ficticias)."
-                                     : "Caneleira P11 - MPU-6050 real.");
+  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P12 - modo SIMULADO (repeticoes ficticias)."
+                                     : "Caneleira P12 - MPU-6050 real.");
   Serial.println("Calibrando o giroscopio: mantenha a perna parada por 2 s...");
   proximaLeituraUs = micros() + PERIODO_US;
 }
@@ -562,6 +697,7 @@ void setup() {
 // Amostra a 100 Hz sem bloquear e entrega cada leitura ao processamento.
 void loop() {
   atualizarMotor();
+  atualizarBotaoFisico();
   acompanharWifi();
   atualizarComunicacao();
 
@@ -583,8 +719,12 @@ void loop() {
   Repeticao rep;
   const bool emUso = usoEfetivo();
   const uint8_t eventos = processarLeitura(caneleira, leitura, DT_S, emUso, rep);
-  if (eventos) tratarEventos(eventos, rep);
+  if (eventos) {
+    marcarAtividade();
+    tratarEventos(eventos, rep);
+  }
   iniciarOfflineSeNecessario(emUso);
+  verificarSono();
 
   amostras++;
   if (IMPRIMIR_ANGULO && amostras % 10 == 0) {
