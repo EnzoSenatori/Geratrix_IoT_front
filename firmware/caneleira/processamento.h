@@ -11,11 +11,14 @@
 
 // ===== Constantes de calibração (valores propostos; ajustar em bancada no P4 a P6) =====
 constexpr float ALFA_FILTRO = 0.98f;              // peso do giroscópio no filtro complementar
+// CONFIRMAR NA PLACA (Corrêa): passo 4 da seção 15.2
 constexpr float THETA_INICIO_GRAUS = 15.0f;       // acima deste ângulo, a subida começou
+// CONFIRMAR NA PLACA (Corrêa): passo 3 da seção 15.2 (as três constantes abaixo; regra das faixas da seção 13.1)
 constexpr float DELTA_PICO_GRAUS = 5.0f;          // queda abaixo do pico que confirma a descida
 constexpr float THETA_FIM_GRAUS = 10.0f;          // abaixo deste ângulo, a perna voltou ao repouso
 constexpr float OMEGA_MOVIMENTO_GRAUS_S = 10.0f;  // |ω| acima disto conta como perna em movimento
 constexpr uint16_t AMOSTRAS_CALIBRACAO = 200;     // 2 s parado, a 100 Hz, para medir o offset
+// CONFIRMAR NA PLACA (Corrêa): passo 2 da seção 15.2
 constexpr float SINAL_GIRO = 1.0f;                // trocar para -1 se a extensão sair negativa (P4)
 
 constexpr uint8_t MAX_SERIES = 6;
@@ -52,6 +55,7 @@ inline bool acumularCalibracao(CalibracaoGiro& c, float omegaBrutoGrausS) {
 // Ângulo pela gravidade: 0° com a perna pendente (gravidade em Z), 90° estendida (em X).
 // Eixos provisórios, iguais aos do P3; confirmar com a placa presa à caneleira (P4).
 inline float anguloAcelerometro(const AmostraImu& a) {
+  // CONFIRMAR NA PLACA (Corrêa): passo 1 da seção 15.2
   return atan2f(a.ax, a.az) * RAD_PARA_GRAUS;
 }
 
@@ -74,6 +78,7 @@ inline float atualizarFiltro(FiltroComplementar& f, float thetaAcc, float omega,
 // ===== Uso efetivo (FSR na tira de fixação) =====
 
 // Limiares provisórios, em mV no GPIO 34; medir com o FSR real (caneleira presa e solta).
+// CONFIRMAR NA PLACA (Corrêa): passo 5 da seção 15.2 (as duas constantes abaixo)
 constexpr float USO_LIGA_MV = 1200.0f;     // acima disto: tira pressionada, caneleira presa
 constexpr float USO_DESLIGA_MV = 800.0f;   // abaixo disto: caneleira solta
 
@@ -415,6 +420,7 @@ inline void receberPrescricao(Caneleira& c, const Prescricao& p) {
 // Processa uma leitura da IMU (chamada a 100 Hz): calibração, ângulo, repetição e sessão.
 inline uint8_t processarLeitura(Caneleira& c, const AmostraImu& a, float dt, bool uso,
                                 Repeticao& rep) {
+  // CONFIRMAR NA PLACA (Corrêa): passo 2 da seção 15.2 (eixo do giroscópio da extensão)
   const float omegaBruto = a.gy * RAD_PARA_GRAUS * SINAL_GIRO;
   c.thetaAcc = anguloAcelerometro(a);
 

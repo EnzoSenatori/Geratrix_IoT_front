@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 // Tempos provisórios; ajustar com o motor real até os padrões serem distinguíveis.
+// CONFIRMAR NA PLACA (Corrêa): passo 7 da seção 15.2 (os tempos VIB_ abaixo)
 constexpr uint16_t VIB_CURTO_MS = 150;
 constexpr uint16_t VIB_LONGO_MS = 600;
 constexpr uint16_t VIB_PAUSA_MS = 150;          // entre pulsos de um mesmo padrão

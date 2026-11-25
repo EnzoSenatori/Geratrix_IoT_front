@@ -28,11 +28,11 @@
 #include "sinal_simulado.h"
 
 // ===== Configuração =====
-constexpr bool USAR_SINAL_SIMULADO = true;  // false para usar a MPU-6050 real
-constexpr bool IMPRIMIR_ANGULO = false;     // true: ângulos a 10 Hz, útil no P4 e no P5
+constexpr bool USAR_SINAL_SIMULADO = false;  // true: roteiro simulado (Wokwi, plano B da demonstração)
+constexpr bool IMPRIMIR_ANGULO = false;      // true só na calibração (seção 15.2) e no ensaio E1
 constexpr bool USAR_REDE = true;            // false: funciona sem Wi-Fi nem broker
 constexpr bool ESPERAR_CMD = USAR_REDE;     // com rede, a sessão só começa com a prescrição do app
-constexpr bool NO_WOKWI = true;             // o simulador roda abaixo do tempo real (ver ESTADO_PERIODO_MS)
+constexpr bool NO_WOKWI = false;            // true no Wokwi, que roda abaixo do tempo real (ver ESTADO_PERIODO_MS)
 constexpr bool TESTAR_REINICIO_P11 = false;  // no Wokwi, reinicia antes de publicar a primeira série
 constexpr bool TESTAR_OFFLINE_P11 = false;  // simula broker indisponível até o fim da sessão
 constexpr uint8_t PIN_SDA = 21;
@@ -40,6 +40,7 @@ constexpr uint8_t PIN_SCL = 22;
 constexpr uint8_t PIN_FSR = 34;  // FSR na tira (no Wokwi, o potenciômetro "fsr")
 constexpr bool USAR_FSR = true;  // false: considera a caneleira sempre presa
 constexpr uint8_t PIN_MOTOR = 26;            // motor de vibração (no Wokwi, o LED "motor")
+// CONFIRMAR NA PLACA (Corrêa): passo 7 da seção 15.2
 constexpr uint8_t INTENSIDADE_MOTOR = 200;   // 0 a 255: duty do PWM com o motor ligado
 constexpr uint32_t FREQ_PWM_MOTOR_HZ = 5000;
 constexpr uint8_t CANAL_PWM_MOTOR = 0;       // usado só pelo core 2.x da ESP32
@@ -48,6 +49,7 @@ constexpr float BATERIA_VAZIA_MV = 3300.0f;  // LiPo considerada vazia (aproxima
 constexpr float BATERIA_CHEIA_MV = 4200.0f;  // LiPo cheia
 constexpr uint8_t PIN_BOTAO = 33;            // botão para o GND, pull-up interno (no Wokwi, "botao")
 constexpr bool INICIO_PELO_BOTAO = true;     // P12: cada série só começa quando o botão é apertado
+// CONFIRMAR NA PLACA (Corrêa): pendência 8 da seção 10 (power bank continua ligado no deep sleep?)
 constexpr bool USAR_DEEP_SLEEP = USAR_REDE;  // P12: depende da gravação das séries na NVS (P11)
 constexpr uint32_t ESPERA_ACK_ANTES_DE_DORMIR_MS = 5000;  // dá tempo ao app de confirmar a série
 constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
@@ -728,7 +730,9 @@ void loop() {
 
   amostras++;
   if (IMPRIMIR_ANGULO && amostras % 10 == 0) {
-    Serial.printf("theta_acc %.1f | theta %.1f | omega %.1f | atrasos %lu\n", caneleira.thetaAcc,
-                  caneleira.theta, caneleira.omega, (unsigned long)atrasos);
+    // Formato rótulo:valor, que o Serial Plotter da Arduino IDE 2 desenha como curvas
+    Serial.printf("theta_acc:%.1f,theta:%.1f,omega:%.1f,fase:%d,atrasos:%lu\n", caneleira.thetaAcc,
+                  caneleira.theta, caneleira.omega, 10 * (int)caneleira.sessao.det.fase,
+                  (unsigned long)atrasos);
   }
 }
