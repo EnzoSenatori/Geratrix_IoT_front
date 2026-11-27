@@ -6,7 +6,8 @@
 
 | Arquivo | Conteúdo |
 |---|---|
-| `caneleira.ino` | Configuração, leitura (simulada ou real), eventos, motor e comunicação MQTT (`estado`, `cmd`, `sessao/<sid>` e `ack`) |
+| `ajustes.h` | **Todos os valores ajustáveis**: modos, eixos da MPU-6050, limiares da repetição e da cadência, FSR, motor. É o único arquivo a editar na placa |
+| `caneleira.ino` | Leitura da MPU-6050 (direto pelo I2C) ou do roteiro simulado, eventos, motor, botão, *deep sleep* e comunicação MQTT (`estado`, `cmd`, `sessao/<sid>` e `ack`) |
 | `processamento.h` | Lógica sem dependência do Arduino: calibração do giroscópio, filtro complementar, máquina de estados, classificação, séries e JSON |
 | `sinal_simulado.h` | Gerador de repetições fictícias com resultado conhecido |
 | `biofeedback.h` | Padrões de vibração tocados sem bloquear a amostragem (lógica pura) |
@@ -42,7 +43,7 @@ Com `INICIO_PELO_BOTAO = true` (padrão desde o P12), cada série espera um cliq
 
 Com `USAR_SINAL_SIMULADO = true`, o sensor virtual é ignorado e o firmware processa o roteiro fictício. A primeira série termina em cerca de 45 s, e a sessão completa, em menos de 3 min.
 
-Com `USAR_REDE = true` e o broker disponível na partida, o firmware aguarda a prescrição pelo `cmd` ou retoma a sessão pendente gravada. Se a partida ficar 15 s sem broker e houver uma prescrição salva, inicia uma sessão com um `sid` novo após calibrar e detectar uso efetivo. Com `USAR_REDE = false`, usa `PRESCRICAO_TESTE`, a sessão `sim001` com 3 séries de 10 repetições.
+Com `USAR_REDE = true` e o broker disponível na partida, o firmware aguarda a prescrição pelo `cmd` ou retoma a sessão pendente gravada. Se a partida ficar `ESPERA_BROKER_NA_PARTIDA_S` (60 s, em `ajustes.h`) sem broker e houver uma prescrição salva, inicia uma sessão com um `sid` novo após calibrar e detectar uso efetivo. Com `USAR_REDE = false`, usa `PRESCRICAO_TESTE`, a sessão `sim001` com 3 séries de 10 repetições.
 
 **Resultado esperado.** Em cada série: 10 repetições, 7 válidas, 2 fora do padrão por ADM e 1 por velocidade (perto de 220 °/s). A posição de cada uma muda de série para série, porque o roteiro segue de onde parou. Ao fim de cada série, uma linha `sessao/<sid> -> {...}` com o resumo no formato do contrato:
 
@@ -80,7 +81,7 @@ Se o `cmd` não fizer efeito, o monitor diz onde parou: sem `MQTT: mensagem rece
 |---|---|
 | Série aguardando o botão (início da sessão ou fim do descanso) | Começa a contar as repetições; 1 pulso curto confirma |
 | Durante o descanso | Encerra o descanso e começa a próxima série na hora; o pulso longo de fim de descanso confirma |
-| Sem sessão, com prescrição salva e sem broker (partida offline do P11) | Começa a sessão offline sem esperar os 15 s, assim que a caneleira estiver presa; o mesmo aperto já libera a série 1 |
+| Sem sessão, com prescrição salva e sem broker (partida offline do P11) | Começa a sessão offline sem esperar os 60 s, assim que a caneleira estiver presa; o mesmo aperto já libera a série 1 |
 | Sem sessão e sem prescrição | Nada; o monitor lembra que falta o `cmd` |
 | Com a ESP32 dormindo | Acorda a ESP32 (ext0) |
 
@@ -113,24 +114,25 @@ O gerador acrescenta ruído ao acelerômetro e ao giroscópio e um offset de 1,7
 ## Definições adotadas
 
 - **Ângulo θ:** 0° com a perna pendente e cerca de 90° estendida, pelo filtro complementar `θ = α·(θ + ω·Δt) + (1 − α)·θ_acc`, com α = 0,98.
-- **Repetição:** contada quando a perna sobe acima de 15°, desce 5° abaixo do pico e volta abaixo de 10°, no fim da descida. Se o ângulo voltar a passar do pico, a subida é retomada, sem nova contagem.
+- **Eixos:** em `ajustes.h`, o eixo da MPU que aponta para cima com a perna pendente (`EIXO_PENDENTE`) e com ela estendida (`EIXO_ESTENDIDO`). θ_acc = atan2(a·estendido, a·pendente); o giro da extensão é lido no eixo estendido × pendente, deduzido dos dois. Com `MODO_EIXOS = true`, o monitor mostra qual eixo aponta para cima.
+- **Repetição:** contada quando a perna sobe mais de 15° acima do repouso, desce 5° abaixo do pico e volta a menos de 10° acima do repouso, no fim da descida. O repouso é o menor ângulo visto antes da subida, o que funciona com a perna pendente em 0° ou com o pé apoiado no chão. Se o ângulo voltar a passar do pico, a subida é retomada, sem nova contagem.
 - **ADM:** pico menos o ângulo de repouso anterior à repetição.
 - **Velocidade de pico:** maior velocidade de subida medida pelo giroscópio.
 - **Fases:** concêntrica é o tempo com ω acima de +10 °/s; excêntrica, o tempo abaixo de −10 °/s. Pausas no topo ficam fora das duas.
-- **Classificação:** válida se ADM ≥ `adm_min` e velocidade de pico ≤ `vel_max`. Uma repetição pode ter os dois desvios. Sem uso efetivo durante toda a repetição, o movimento não é contado.
-- **Uso efetivo:** tensão do divisor do FSR no GPIO 34, com histerese: presa a partir de 1,2 V, solta abaixo de 0,8 V; entre os dois, mantém o estado. Valores provisórios. Com `USAR_FSR = false`, a caneleira é considerada sempre presa.
-- **Reinício do detector:** depois de um descanso, uma nova repetição só é aceita quando a perna é vista em repouso (abaixo de 10°); assim, a descida em curso no fim do descanso não vira repetição.
-- **Biofeedback:** 1 pulso curto para repetição válida, 2 para fora do padrão, 3 no fim da série e 1 longo no fim do descanso; pulsos de 150 ms (longo, 600 ms), 150 ms entre pulsos e 500 ms entre padrões. Os padrões entram numa fila e tocam pelo PWM do GPIO 26, consultando `millis()` a cada volta do `loop()`, sem `delay()`.
+- **Classificação:** válida se ADM ≥ `adm_min`, velocidade de pico ≤ `vel_max` e cadência no padrão (descida de pelo menos `T_DESCIDA_MIN_S` e repetição de até `T_REPETICAO_MAX_S`). Uma repetição pode ter mais de um desvio. Sem uso efetivo durante toda a repetição, o movimento não é contado.
+- **Uso efetivo:** tensão do divisor do FSR no GPIO 34, com histerese de tensão e de tempo: presa a partir de `USO_LIGA_MV`; solta só depois de `USO_TEMPO_SOLTA_S` abaixo de `USO_DESLIGA_MV`; entre os dois, mantém o estado. Com `USAR_FSR = false`, a caneleira é considerada sempre presa.
+- **Reinício do detector:** no fim do descanso ou ao apertar o botão, o ângulo atual vira o repouso de partida; se a perna ainda estiver descendo, o repouso desce junto, e a descida em curso não vira repetição.
+- **Biofeedback:** 1 pulso curto para repetição válida, 2 para fora do padrão, 3 no fim da série e 1 longo no fim do descanso; tempos em `ajustes.h` (`VIB_...`) e 500 ms entre padrões. Os padrões entram numa fila e tocam pelo PWM do GPIO 26, consultando `millis()` a cada volta do `loop()`, sem `delay()`.
 - **Comunicação:** o Wi-Fi conecta sem bloquear. A conexão segura ao broker trava a ESP32 por 1 a 2 s, por isso só é tentada fora de uma série, com espera crescente de 2 s a 30 s entre tentativas. Na conexão, a caneleira registra o aviso de desconexão `{"online":false}`, retido, e publica `estado` na conexão, quando o uso muda e a cada 60 s. O buffer da PubSubClient foi ampliado de 256 para 1024 bytes: o maior resumo possível, com 6 séries, tem cerca de 810 bytes.
 - **Prescrição (`cmd`):** aceita só se o `sid` tiver de 1 a 15 caracteres, sem `/`, `+` ou `#`, e se séries (1 a 6, o limite de memória `MAX_SERIES`), repetições (1 a 50), `adm_min` (até 120°), `vel_max` (até 500 °/s) e descanso (até 600 s) forem coerentes. São limites técnicos de coerência dos dados, não clínicos. Antes da calibração terminar, a prescrição fica guardada e a sessão começa logo depois dela. O mesmo `sid` reenviado é ignorado, como pede o contrato, e um `cmd` com outro `sid` também é ignorado enquanto houver sessão em andamento.
 - **Resumo e confirmação (`sessao/<sid>` e `ack`):** ao fim de cada série, o resumo acumulado é publicado retido. Sem conexão, sai assim que a caneleira reconectar, enquanto o app não confirmar todas as séries. O `ack` nunca confirma mais séries do que as já concluídas. Com a sessão concluída e toda confirmada, uma publicação vazia e retida apaga a mensagem no broker.
 - **Wokwi e tempo real:** o simulador roda a cerca de 50% do tempo real, e o broker conta o tempo real. Com `NO_WOKWI = true`, o `estado` sai a cada 20 s e o keepalive sobe para 60 s, para o broker não dar a caneleira por desconectada. Na placa real, `NO_WOKWI = false` volta aos 60 s do contrato e ao keepalive de 15 s.
-- **Bateria:** o GPIO 35 lê metade da tensão da LiPo; 3,3 V vira 0% e 4,2 V vira 100%, em aproximação linear provisória.
+- **Bateria:** com o power bank, `MEDIR_BATERIA = false` e o `estado` publica `"bat":null` (contrato v1.2). Com uma LiPo, o GPIO 35 lê metade da tensão dela; 3,3 V vira 0% e 4,2 V vira 100%.
 - **Resumo da série (a validar com o Rafael):** `adm_media`, `t_conc` e `t_exc` são médias de todas as repetições; `vel_pico` é o máximo da série; `status` vale `descanso` entre séries e `concluida` ao final; `ts` é `null` até haver hora de rede.
 
 ## Constantes a calibrar em bancada
 
-Ficam no topo de `processamento.h`: `ALFA_FILTRO`, `THETA_INICIO_GRAUS`, `DELTA_PICO_GRAUS`, `THETA_FIM_GRAUS`, `OMEGA_MOVIMENTO_GRAUS_S`, `AMOSTRAS_CALIBRACAO`, `SINAL_GIRO`, `USO_LIGA_MV` e `USO_DESLIGA_MV`; no topo de `biofeedback.h`, as constantes `VIB_...`; no `caneleira.ino`, `INTENSIDADE_MOTOR`. Os eixos de `anguloAcelerometro()` e o sinal do giroscópio são provisórios e devem ser confirmados no P4, com a placa presa à caneleira.
+Todas ficam em `ajustes.h`, com o valor proposto para a apresentação e o modo de conferir cada uma: eixos (`EIXO_PENDENTE`, `EIXO_ESTENDIDO`, `SINAL_GIRO`), repetição (`THETA_INICIO_GRAUS`, `THETA_FIM_GRAUS`, `DELTA_PICO_GRAUS`, `OMEGA_MOVIMENTO_GRAUS_S`, `ALFA_FILTRO`), cadência (`T_DESCIDA_MIN_S`, `T_REPETICAO_MAX_S`), FSR (`USO_LIGA_MV`, `USO_DESLIGA_MV`, `USO_TEMPO_SOLTA_S`) e motor (`INTENSIDADE_MOTOR`, `VIB_...`).
 
 ## Teste no computador
 

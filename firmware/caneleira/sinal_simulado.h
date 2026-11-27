@@ -101,16 +101,20 @@ inline float ruido(GeradorSimulado& g) {
   return (g.semente >> 8) * (2.0f / 16777216.0f) - 1.0f;
 }
 
-// Gera a próxima leitura simulada, nas unidades da Adafruit, e avança dt.
+// Gera a próxima leitura simulada, em m/s² e rad/s (unidades da leitura real), e avança
+// dt. A gravidade e o giro saem nos eixos configurados em ajustes.h (seção 2), como
+// numa caneleira real presa daquele jeito; o offset do giroscópio entra nos três eixos.
 inline void lerImuSimulada(GeradorSimulado& g, float dt, AmostraImu& a) {
   float omegaGraus;
   const float theta = anguloRoteiro(g.t, omegaGraus) / RAD_PARA_GRAUS;
-  a.ax = GRAVIDADE_M_S2 * sinf(theta) + SIM_RUIDO_ACC_M_S2 * ruido(g);
-  a.ay = SIM_RUIDO_ACC_M_S2 * ruido(g);
-  a.az = GRAVIDADE_M_S2 * cosf(theta) + SIM_RUIDO_ACC_M_S2 * ruido(g);
-  a.gx = SIM_RUIDO_GIRO_RAD_S * ruido(g);
-  a.gy = omegaGraus / RAD_PARA_GRAUS * SINAL_GIRO + SIM_OFFSET_GIRO_RAD_S +
-         SIM_RUIDO_GIRO_RAD_S * ruido(g);
-  a.gz = SIM_RUIDO_GIRO_RAD_S * ruido(g);
+  const float omegaRad = omegaGraus / RAD_PARA_GRAUS * SINAL_GIRO;
+  const float cimaPendente = GRAVIDADE_M_S2 * cosf(theta);
+  const float cimaEstendido = GRAVIDADE_M_S2 * sinf(theta);
+  a.ax = cimaPendente * V_PENDENTE.x + cimaEstendido * V_ESTENDIDO.x + SIM_RUIDO_ACC_M_S2 * ruido(g);
+  a.ay = cimaPendente * V_PENDENTE.y + cimaEstendido * V_ESTENDIDO.y + SIM_RUIDO_ACC_M_S2 * ruido(g);
+  a.az = cimaPendente * V_PENDENTE.z + cimaEstendido * V_ESTENDIDO.z + SIM_RUIDO_ACC_M_S2 * ruido(g);
+  a.gx = omegaRad * V_GIRO.x + SIM_OFFSET_GIRO_RAD_S + SIM_RUIDO_GIRO_RAD_S * ruido(g);
+  a.gy = omegaRad * V_GIRO.y + SIM_OFFSET_GIRO_RAD_S + SIM_RUIDO_GIRO_RAD_S * ruido(g);
+  a.gz = omegaRad * V_GIRO.z + SIM_OFFSET_GIRO_RAD_S + SIM_RUIDO_GIRO_RAD_S * ruido(g);
   g.t += dt;
 }

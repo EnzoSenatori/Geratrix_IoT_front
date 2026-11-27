@@ -1,7 +1,7 @@
 #pragma once
 // Processamento local da caneleira (P5 a P7): calibração do giroscópio, ângulo da
 // perna por filtro complementar, detecção e classificação de cada repetição,
-// controle das séries e resumo no formato do contrato MQTT v1.
+// controle das séries e resumo no formato do contrato MQTT (v1.2: desvios.cad).
 // Não depende do Arduino: o mesmo arquivo compila no computador (firmware/testes).
 
 #include <math.h>
@@ -9,17 +9,9 @@
 #include <stdio.h>
 #include <string.h>
 
-// ===== Constantes de calibração (valores propostos; ajustar em bancada no P4 a P6) =====
-constexpr float ALFA_FILTRO = 0.98f;              // peso do giroscópio no filtro complementar
-// CONFIRMAR NA PLACA (Corrêa): passo 4 da seção 15.2
-constexpr float THETA_INICIO_GRAUS = 15.0f;       // acima deste ângulo, a subida começou
-// CONFIRMAR NA PLACA (Corrêa): passo 3 da seção 15.2 (as três constantes abaixo; regra das faixas da seção 13.1)
-constexpr float DELTA_PICO_GRAUS = 5.0f;          // queda abaixo do pico que confirma a descida
-constexpr float THETA_FIM_GRAUS = 10.0f;          // abaixo deste ângulo, a perna voltou ao repouso
-constexpr float OMEGA_MOVIMENTO_GRAUS_S = 10.0f;  // |ω| acima disto conta como perna em movimento
+#include "ajustes.h"  // valores de calibração e de operação: só lá se ajusta
+
 constexpr uint16_t AMOSTRAS_CALIBRACAO = 200;     // 2 s parado, a 100 Hz, para medir o offset
-// CONFIRMAR NA PLACA (Corrêa): passo 2 da seção 15.2
-constexpr float SINAL_GIRO = 1.0f;                // trocar para -1 se a extensão sair negativa (P4)
 
 constexpr uint8_t MAX_SERIES = 6;
 constexpr float PI_F = 3.14159265f;
@@ -50,13 +42,62 @@ inline bool acumularCalibracao(CalibracaoGiro& c, float omegaBrutoGrausS) {
   return true;
 }
 
-// ===== Ângulo da perna =====
+// ===== Eixos e ângulo da perna =====
 
-// Ângulo pela gravidade: 0° com a perna pendente (gravidade em Z), 90° estendida (em X).
-// Eixos provisórios, iguais aos do P3; confirmar com a placa presa à caneleira (P4).
-inline float anguloAcelerometro(const AmostraImu& a) {
-  // CONFIRMAR NA PLACA (Corrêa): passo 1 da seção 15.2
-  return atan2f(a.ax, a.az) * RAD_PARA_GRAUS;
+struct Vetor3 {
+  float x, y, z;
+};
+
+// Vetor unitário de um eixo da MPU-6050, com o sinal.
+constexpr Vetor3 vetorEixo(Eixo e) {
+  return e == Eixo::X_POS   ? Vetor3{1, 0, 0}
+         : e == Eixo::X_NEG ? Vetor3{-1, 0, 0}
+         : e == Eixo::Y_POS ? Vetor3{0, 1, 0}
+         : e == Eixo::Y_NEG ? Vetor3{0, -1, 0}
+         : e == Eixo::Z_POS ? Vetor3{0, 0, 1}
+                            : Vetor3{0, 0, -1};
+}
+
+// Produto vetorial a × b.
+constexpr Vetor3 vetorial(Vetor3 a, Vetor3 b) {
+  return Vetor3{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
+// Produto escalar a · b.
+constexpr float escalar(Vetor3 a, Vetor3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+// Eixo que aponta para cima com a perna pendente e com ela estendida (ajustes.h, seção 2).
+constexpr Vetor3 V_PENDENTE = vetorEixo(EIXO_PENDENTE);
+constexpr Vetor3 V_ESTENDIDO = vetorEixo(EIXO_ESTENDIDO);
+// Eixo do giroscópio em que a extensão é positiva. A perna gira em torno do joelho e o
+// vetor "para cima" medido passa do eixo pendente para o estendido; visto pelo sensor, a
+// gravidade gira ao contrário do sensor, então o giro da extensão é estendido × pendente.
+constexpr Vetor3 V_GIRO = vetorial(V_ESTENDIDO, V_PENDENTE);
+static_assert(escalar(V_PENDENTE, V_ESTENDIDO) == 0.0f,
+              "ajustes.h: EIXO_PENDENTE e EIXO_ESTENDIDO precisam ser eixos diferentes (X, Y ou Z)");
+
+// Ângulo pela gravidade: 0° com a perna pendente, 90° com ela estendida na horizontal.
+inline float anguloAcelerometro(const AmostraImu& a, Vetor3 pendente = V_PENDENTE,
+                                Vetor3 estendido = V_ESTENDIDO) {
+  const Vetor3 acc{a.ax, a.ay, a.az};
+  return atan2f(escalar(acc, estendido), escalar(acc, pendente)) * RAD_PARA_GRAUS;
+}
+
+// Velocidade angular da perna (°/s, positiva na extensão), antes de tirar o offset.
+inline float omegaExtensao(const AmostraImu& a, Vetor3 giro = V_GIRO) {
+  return escalar(Vetor3{a.gx, a.gy, a.gz}, giro) * RAD_PARA_GRAUS * SINAL_GIRO;
+}
+
+// Eixo da MPU que aponta para cima agora (o de maior aceleração), para o MODO_EIXOS.
+inline const char* eixoParaCima(const AmostraImu& a, float& valor) {
+  const float v[3] = {a.ax, a.ay, a.az};
+  static const char* const nomes[6] = {"X_POS", "X_NEG", "Y_POS", "Y_NEG", "Z_POS", "Z_NEG"};
+  uint8_t maior = 0;
+  for (uint8_t i = 1; i < 3; i++) {
+    if (fabsf(v[i]) > fabsf(v[maior])) maior = i;
+  }
+  valor = v[maior];
+  return nomes[2 * maior + (v[maior] < 0 ? 1 : 0)];
 }
 
 struct FiltroComplementar {
@@ -77,27 +118,40 @@ inline float atualizarFiltro(FiltroComplementar& f, float thetaAcc, float omega,
 
 // ===== Uso efetivo (FSR na tira de fixação) =====
 
-// Limiares provisórios, em mV no GPIO 34; medir com o FSR real (caneleira presa e solta).
-// CONFIRMAR NA PLACA (Corrêa): passo 5 da seção 15.2 (as duas constantes abaixo)
-constexpr float USO_LIGA_MV = 1200.0f;     // acima disto: tira pressionada, caneleira presa
-constexpr float USO_DESLIGA_MV = 800.0f;   // abaixo disto: caneleira solta
+// Limiares USO_LIGA_MV, USO_DESLIGA_MV e USO_TEMPO_SOLTA_S em ajustes.h (seção 4).
 
 struct DetectorUso {
   bool emUso;
+  float tAbaixo;  // s seguidos abaixo de USO_DESLIGA_MV
 };
 
-// Atualiza o estado de uso com histerese: entre os dois limiares, mantém o estado anterior.
-inline bool atualizarUso(DetectorUso& u, float milivolts) {
-  if (!u.emUso && milivolts >= USO_LIGA_MV) u.emUso = true;
-  else if (u.emUso && milivolts <= USO_DESLIGA_MV) u.emUso = false;
+// Atualiza o estado de uso com histerese de tensão e de tempo: prende na hora ao passar de
+// USO_LIGA_MV; só solta depois de USO_TEMPO_SOLTA_S abaixo de USO_DESLIGA_MV, para que a
+// folga da tira durante a extensão não descarte a repetição.
+inline bool atualizarUso(DetectorUso& u, float milivolts, float dt) {
+  if (!u.emUso) {
+    if (milivolts >= USO_LIGA_MV) {
+      u.emUso = true;
+      u.tAbaixo = 0;
+    }
+    return u.emUso;
+  }
+  if (milivolts <= USO_DESLIGA_MV) {
+    u.tAbaixo += dt;
+    if (u.tAbaixo >= USO_TEMPO_SOLTA_S) u.emUso = false;
+  } else {
+    u.tAbaixo = 0;
+  }
   return u.emUso;
 }
 
 // ===== Detecção da repetição (máquina de estados com histerese) =====
 
-// REPOUSO -> SUBINDO ao passar de THETA_INICIO; SUBINDO -> DESCENDO ao cair DELTA_PICO
-// abaixo do pico; DESCENDO -> FINALIZANDO ao ficar abaixo de THETA_FIM; a repetição é
-// contada quando a descida termina. Se o ângulo voltar a passar do pico, retoma SUBINDO,
+// Os limiares valem acima do repouso (o menor ângulo visto em REPOUSO antes da subida), o
+// que funciona com a perna pendente em 0° ou com o pé apoiado no chão em 20°.
+// REPOUSO -> SUBINDO ao passar de repouso + THETA_INICIO; SUBINDO -> DESCENDO ao cair
+// DELTA_PICO abaixo do pico; DESCENDO -> FINALIZANDO ao ficar abaixo de repouso + THETA_FIM;
+// a repetição é contada quando a descida termina. Se o ângulo voltar a passar do pico, retoma SUBINDO,
 // de modo que tremor ou pausa no topo não geram duas contagens.
 enum class Fase : uint8_t { REPOUSO, SUBINDO, DESCENDO, FINALIZANDO };
 
@@ -108,9 +162,11 @@ struct Repeticao {
   float velPico;  // °/s: maior velocidade de subida
   float tConc;    // s
   float tExc;     // s
+  float tTotal;   // s, do início da subida ao fim da descida (cadência)
   bool uso;       // caneleira presa à perna durante toda a repetição
   bool admOk;
   bool velOk;
+  bool cadOk;     // descida controlada e repetição sem travar
   bool valida;
 };
 
@@ -118,18 +174,18 @@ struct DetectorRepeticao {
   Fase fase;
   float thetaMin, thetaPico, velPico;
   float tConc, tExc;
-  float tSubidaPre, velPre;  // subida iniciada ainda abaixo de THETA_INICIO
+  float tSubidaPre, velPre;  // subida iniciada ainda abaixo do limiar de início
+  float tRep;                // s desde o início da subida (cadência)
   bool usoContinuo;
-  bool armado;  // só aceita nova subida depois de ver a perna em repouso
 };
 
-// Volta o detector ao repouso, usando o ângulo atual como referência de partida.
+// Volta o detector ao repouso, usando o ângulo atual como repouso de partida; se a perna
+// ainda estiver descendo, o repouso desce junto com ela.
 inline void reiniciarDetector(DetectorRepeticao& d, float theta) {
   d = DetectorRepeticao{};
   d.fase = Fase::REPOUSO;
   d.thetaMin = theta;
   d.usoContinuo = true;
-  d.armado = theta < THETA_FIM_GRAUS;
 }
 
 // Avança a máquina de estados com uma amostra; retorna true quando uma repetição termina.
@@ -140,14 +196,7 @@ inline bool detectarRepeticao(DetectorRepeticao& d, float theta, float omega, fl
 
   switch (d.fase) {
     case Fase::REPOUSO:
-      if (!d.armado) {  // reiniciado no meio de um movimento: espera a perna voltar ao repouso
-        if (theta < THETA_FIM_GRAUS) {
-          d.armado = true;
-          d.thetaMin = theta;
-        }
-        return false;
-      }
-      if (theta < d.thetaMin) d.thetaMin = theta;
+      if (theta < d.thetaMin) d.thetaMin = theta;  // o repouso acompanha a perna que desce
       if (subindo) {
         d.tSubidaPre += dt;
         if (omega > d.velPre) d.velPre = omega;
@@ -155,18 +204,20 @@ inline bool detectarRepeticao(DetectorRepeticao& d, float theta, float omega, fl
         d.tSubidaPre = 0;
         d.velPre = 0;
       }
-      if (theta > THETA_INICIO_GRAUS) {
+      if (theta > d.thetaMin + THETA_INICIO_GRAUS) {
         d.fase = Fase::SUBINDO;
         d.thetaPico = theta;
         d.tConc = d.tSubidaPre;
         d.velPico = d.velPre;
         d.tExc = 0;
+        d.tRep = d.tSubidaPre;
         d.usoContinuo = uso;
       }
       return false;
 
     case Fase::SUBINDO:
     case Fase::DESCENDO:
+      d.tRep += dt;
       d.usoContinuo = d.usoContinuo && uso;
       if (subindo) {
         d.tConc += dt;
@@ -178,12 +229,13 @@ inline bool detectarRepeticao(DetectorRepeticao& d, float theta, float omega, fl
         d.fase = Fase::SUBINDO;
       } else if (d.fase == Fase::SUBINDO && theta < d.thetaPico - DELTA_PICO_GRAUS) {
         d.fase = Fase::DESCENDO;
-      } else if (d.fase == Fase::DESCENDO && theta < THETA_FIM_GRAUS) {
+      } else if (d.fase == Fase::DESCENDO && theta < d.thetaMin + THETA_FIM_GRAUS) {
         d.fase = Fase::FINALIZANDO;
       }
       return false;
 
     case Fase::FINALIZANDO:
+      d.tRep += dt;
       d.usoContinuo = d.usoContinuo && uso;
       if (descendo) {  // ainda terminando a descida abaixo de THETA_FIM
         d.tExc += dt;
@@ -194,6 +246,7 @@ inline bool detectarRepeticao(DetectorRepeticao& d, float theta, float omega, fl
       rep.velPico = d.velPico;
       rep.tConc = d.tConc;
       rep.tExc = d.tExc;
+      rep.tTotal = d.tRep;
       rep.uso = d.usoContinuo;
       reiniciarDetector(d, theta);
       return true;
@@ -215,7 +268,7 @@ struct Prescricao {
 
 // Acumulados de uma série; as médias são calculadas na hora de montar o JSON.
 struct ResumoSerie {
-  uint8_t n, validas, total, desviosAdm, desviosVel;
+  uint8_t n, validas, total, desviosAdm, desviosVel, desviosCad;
   float somaAdm, velPico, somaConc, somaExc;
 };
 
@@ -280,13 +333,15 @@ inline uint8_t seriesConcluidas(const Sessao& s) {
 inline uint8_t registrarRepeticao(Sessao& s, Repeticao& rep, float t) {
   rep.admOk = rep.adm >= s.p.admMin;
   rep.velOk = rep.velPico <= s.p.velMax;
-  rep.valida = rep.admOk && rep.velOk;
+  rep.cadOk = rep.tExc >= T_DESCIDA_MIN_S && rep.tTotal <= T_REPETICAO_MAX_S;
+  rep.valida = rep.admOk && rep.velOk && rep.cadOk;
 
   ResumoSerie& r = s.resumos[s.serie];
   r.total++;
   if (rep.valida) r.validas++;
-  if (!rep.admOk) r.desviosAdm++;  // uma repetição pode ter os dois desvios
+  if (!rep.admOk) r.desviosAdm++;  // uma repetição pode ter mais de um desvio
   if (!rep.velOk) r.desviosVel++;
+  if (!rep.cadOk) r.desviosCad++;
   r.somaAdm += rep.adm;
   r.somaConc += rep.tConc;
   r.somaExc += rep.tExc;
@@ -373,11 +428,12 @@ inline int montarJsonSessao(const Sessao& s, char* buf, size_t tam) {
     const float total = r.total > 0 ? (float)r.total : 1.0f;
     const int n = snprintf(buf + pos, tam - pos,
                            "%s{\"n\":%u,\"validas\":%u,\"total\":%u,\"adm_media\":%.1f,"
-                           "\"vel_pico\":%.1f,\"desvios\":{\"adm\":%u,\"vel\":%u},"
+                           "\"vel_pico\":%.1f,\"desvios\":{\"adm\":%u,\"vel\":%u,\"cad\":%u},"
                            "\"t_conc\":%.1f,\"t_exc\":%.1f}",
                            i > 0 ? "," : "", (unsigned)r.n, (unsigned)r.validas,
                            (unsigned)r.total, r.somaAdm / total, r.velPico,
-                           (unsigned)r.desviosAdm, (unsigned)r.desviosVel, r.somaConc / total,
+                           (unsigned)r.desviosAdm, (unsigned)r.desviosVel, (unsigned)r.desviosCad,
+                           r.somaConc / total,
                            r.somaExc / total);
     if (n < 0 || (size_t)(pos + n) >= tam) return -1;
     pos += n;
@@ -420,8 +476,7 @@ inline void receberPrescricao(Caneleira& c, const Prescricao& p) {
 // Processa uma leitura da IMU (chamada a 100 Hz): calibração, ângulo, repetição e sessão.
 inline uint8_t processarLeitura(Caneleira& c, const AmostraImu& a, float dt, bool uso,
                                 Repeticao& rep) {
-  // CONFIRMAR NA PLACA (Corrêa): passo 2 da seção 15.2 (eixo do giroscópio da extensão)
-  const float omegaBruto = a.gy * RAD_PARA_GRAUS * SINAL_GIRO;
+  const float omegaBruto = omegaExtensao(a);
   c.thetaAcc = anguloAcelerometro(a);
 
   if (!c.calib.pronta) {

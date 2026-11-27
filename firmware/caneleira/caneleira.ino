@@ -1,13 +1,12 @@
-// Caneleira instrumentada — firmware da ESP32 (P3 a P12).
+// Caneleira instrumentada — firmware da ESP32 (P3 a P12, contrato MQTT v1.2).
 // Lê a IMU a 100 Hz, estima o ângulo da perna, conta e classifica cada repetição e,
 // ao fim de cada série, publica o resumo no tópico sessao/<sid> do contrato MQTT.
 // Com USAR_SINAL_SIMULADO = true, roda sem sensor, sobre um roteiro de repetições
 // fictícias cujo resultado esperado é conhecido (ver sinal_simulado.h).
 // P12: cada série começa pelo botão (GPIO 33), e a ESP32 dorme (deep sleep) nos descansos
 // longos e quando fica ociosa, acordando pelo timer ou pelo botão.
+// TODOS OS VALORES AJUSTÁVEIS (eixos, limiares, FSR, motor, modos) ESTÃO EM ajustes.h.
 
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <PubSubClient.h>
@@ -19,6 +18,7 @@
 #include <esp_random.h>
 #include <esp_sleep.h>
 
+#include "ajustes.h"
 #include "biofeedback.h"
 #include "botao.h"
 #include "certificado_ca.h"
@@ -27,30 +27,21 @@
 #include "segredos.h"
 #include "sinal_simulado.h"
 
-// ===== Configuração =====
-constexpr bool USAR_SINAL_SIMULADO = false;  // true: roteiro simulado (Wokwi, plano B da demonstração)
-constexpr bool IMPRIMIR_ANGULO = false;      // true só na calibração (seção 15.2) e no ensaio E1
+// ===== Configuração fixa (os valores que se ajustam estão em ajustes.h) =====
 constexpr bool USAR_REDE = true;            // false: funciona sem Wi-Fi nem broker
 constexpr bool ESPERAR_CMD = USAR_REDE;     // com rede, a sessão só começa com a prescrição do app
-constexpr bool NO_WOKWI = false;            // true no Wokwi, que roda abaixo do tempo real (ver ESTADO_PERIODO_MS)
 constexpr bool TESTAR_REINICIO_P11 = false;  // no Wokwi, reinicia antes de publicar a primeira série
 constexpr bool TESTAR_OFFLINE_P11 = false;  // simula broker indisponível até o fim da sessão
 constexpr uint8_t PIN_SDA = 21;
 constexpr uint8_t PIN_SCL = 22;
 constexpr uint8_t PIN_FSR = 34;  // FSR na tira (no Wokwi, o potenciômetro "fsr")
-constexpr bool USAR_FSR = true;  // false: considera a caneleira sempre presa
 constexpr uint8_t PIN_MOTOR = 26;            // motor de vibração (no Wokwi, o LED "motor")
-// CONFIRMAR NA PLACA (Corrêa): passo 7 da seção 15.2
-constexpr uint8_t INTENSIDADE_MOTOR = 200;   // 0 a 255: duty do PWM com o motor ligado
 constexpr uint32_t FREQ_PWM_MOTOR_HZ = 5000;
 constexpr uint8_t CANAL_PWM_MOTOR = 0;       // usado só pelo core 2.x da ESP32
 constexpr uint8_t PIN_BATERIA = 35;          // divisor 2 × 100 kΩ (no Wokwi, o potenciômetro "bateria")
 constexpr float BATERIA_VAZIA_MV = 3300.0f;  // LiPo considerada vazia (aproximação linear)
 constexpr float BATERIA_CHEIA_MV = 4200.0f;  // LiPo cheia
 constexpr uint8_t PIN_BOTAO = 33;            // botão para o GND, pull-up interno (no Wokwi, "botao")
-constexpr bool INICIO_PELO_BOTAO = true;     // P12: cada série só começa quando o botão é apertado
-// CONFIRMAR NA PLACA (Corrêa): pendência 8 da seção 10 (power bank continua ligado no deep sleep?)
-constexpr bool USAR_DEEP_SLEEP = USAR_REDE;  // P12: depende da gravação das séries na NVS (P11)
 constexpr uint32_t ESPERA_ACK_ANTES_DE_DORMIR_MS = 5000;  // dá tempo ao app de confirmar a série
 constexpr uint32_t PERIODO_US = 10000;  // 100 Hz
 constexpr float DT_S = PERIODO_US / 1000000.0f;
@@ -60,7 +51,7 @@ constexpr float DT_S = PERIODO_US / 1000000.0f;
 const Prescricao PRESCRICAO_TESTE = {"sim001", 3, 10, 60.0f, 150.0f,
                                      (uint16_t)(USAR_SINAL_SIMULADO ? 10 : 60)};
 
-// ===== Comunicação (contrato MQTT v1.1) =====
+// ===== Comunicação (contrato MQTT v1.2) =====
 const char MQTT_HOST[] = "z2f0d126.ala.eu-central-1.emqxsl.com";
 constexpr uint16_t MQTT_PORTA = 8883;                 // MQTT sobre TLS
 const char MQTT_CLIENT_ID[] = "caneleira-01";         // único por conexão
@@ -75,10 +66,10 @@ constexpr uint32_t ESTADO_PERIODO_MS = NO_WOKWI ? 20000 : 60000;  // contrato: a
 constexpr uint16_t MQTT_KEEPALIVE_S = NO_WOKWI ? 60 : 15;
 constexpr uint32_t RECONEXAO_MIN_MS = 2000;           // espera entre tentativas: 2 s...
 constexpr uint32_t RECONEXAO_MAX_MS = 30000;          // ...dobrando até 30 s
-constexpr uint32_t ESPERA_BROKER_NA_PARTIDA_MS = 15000;
+constexpr uint32_t ESPERA_BROKER_NA_PARTIDA_MS = ESPERA_BROKER_NA_PARTIDA_S * 1000UL;  // ajustes.h
 
 constexpr char CHAVE_PRESCRICAO[] = "prescricao-v1";
-constexpr char CHAVE_SESSAO[] = "sessao-v1";
+constexpr char CHAVE_SESSAO[] = "sessao-v2";  // v2: o resumo salvo ganhou desviosCad
 constexpr char SID_SEMENTE_P11[] = "p11-offline-01";
 
 struct SessaoSalva {
@@ -88,7 +79,6 @@ struct SessaoSalva {
   ResumoSerie resumos[MAX_SERIES];
 };
 
-Adafruit_MPU6050 imu;
 Caneleira caneleira;
 DetectorUso detectorUso;
 Biofeedback vibracao;
@@ -119,28 +109,103 @@ RTC_DATA_ATTR uint8_t motivoUltimoSono = (uint8_t)MotivoSono::NENHUM;
 // Registra atividade: adia o deep sleep por ociosidade e a espera pelo ack.
 void marcarAtividade() { ultimaAtividadeMs = millis(); }
 
+// ===== MPU-6050, lida direto pelo I2C =====
+// Sem biblioteca, como no teste de bancada: aceita também as variantes da MPU-6050 que
+// respondem 0x70 ou 0x72 no WHO_AM_I, que a biblioteca da Adafruit recusa.
+constexpr uint8_t MPU_ENDERECO = 0x68;              // AD0 solto
+constexpr float MPU_ACC_LSB_POR_G = 16384.0f;       // escala de ±2 g
+constexpr float MPU_GIRO_LSB_POR_GRAU_S = 131.0f;   // escala de ±250 °/s
+
+// Escreve um registrador da MPU-6050.
+void escreverMpu(uint8_t registrador, uint8_t valor) {
+  Wire.beginTransmission(MPU_ENDERECO);
+  Wire.write(registrador);
+  Wire.write(valor);
+  Wire.endTransmission();
+}
+
+// Lê um registrador da MPU-6050; devolve 0 se ela não responder.
+uint8_t lerRegistroMpu(uint8_t registrador) {
+  Wire.beginTransmission(MPU_ENDERECO);
+  Wire.write(registrador);
+  if (Wire.endTransmission(false) != 0) return 0;
+  if (Wire.requestFrom(MPU_ENDERECO, (uint8_t)1) != 1) return 0;
+  return Wire.read();
+}
+
+// Confere o WHO_AM_I e configura: acorda, ±2 g, ±250 °/s, filtro de 21 Hz, 100 Hz.
+bool iniciarMpu() {
+  const uint8_t quem = lerRegistroMpu(0x75);
+  if (quem != 0x68 && quem != 0x70 && quem != 0x72) {
+    Serial.printf("ERRO: MPU-6050 nao respondeu (WHO_AM_I = 0x%02X). Confira VCC no 3V3, GND, "
+                  "SDA no D21 e SCL no D22.\n", quem);
+    return false;
+  }
+  escreverMpu(0x6B, 0x01);  // sai do sono; relógio pelo giroscópio X (mais estável)
+  delay(50);
+  escreverMpu(0x19, 9);     // taxa interna: 1 kHz / (1 + 9) = 100 Hz
+  escreverMpu(0x1A, 0x04);  // filtro digital: 21 Hz no acelerômetro, 20 Hz no giroscópio
+  escreverMpu(0x1B, 0x00);  // giroscópio em ±250 °/s
+  escreverMpu(0x1C, 0x00);  // acelerômetro em ±2 g
+  Serial.printf("MPU-6050 ok (WHO_AM_I = 0x%02X).\n", quem);
+  return true;
+}
+
+// Lê aceleração (m/s²) e giro (rad/s) numa só transação de 14 bytes.
+bool lerMpu(AmostraImu& a) {
+  Wire.beginTransmission(MPU_ENDERECO);
+  Wire.write(0x3B);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(MPU_ENDERECO, (uint8_t)14) != 14) return false;
+  int16_t bruto[7];  // ax, ay, az, temperatura, gx, gy, gz
+  for (uint8_t i = 0; i < 7; i++) {
+    const uint8_t alto = Wire.read();  // dois comandos: a ordem das leituras importa
+    const uint8_t baixo = Wire.read();
+    bruto[i] = (int16_t)((alto << 8) | baixo);
+  }
+  const float acc = GRAVIDADE_M_S2 / MPU_ACC_LSB_POR_G;
+  const float giro = 1.0f / (MPU_GIRO_LSB_POR_GRAU_S * RAD_PARA_GRAUS);
+  a.ax = bruto[0] * acc;
+  a.ay = bruto[1] * acc;
+  a.az = bruto[2] * acc;
+  a.gx = bruto[4] * giro;
+  a.gy = bruto[5] * giro;
+  a.gz = bruto[6] * giro;
+  return true;
+}
+
 // Lê a próxima amostra: do roteiro simulado ou da MPU-6050 real.
 bool obterLeitura(AmostraImu& a) {
   if (USAR_SINAL_SIMULADO) {
     lerImuSimulada(gerador, DT_S, a);
     return true;
   }
-  sensors_event_t aceleracao, giro, temperatura;
-  if (!imu.getEvent(&aceleracao, &giro, &temperatura)) return false;
-  a.ax = aceleracao.acceleration.x;
-  a.ay = aceleracao.acceleration.y;
-  a.az = aceleracao.acceleration.z;
-  a.gx = giro.gyro.x;
-  a.gy = giro.gyro.y;
-  a.gz = giro.gyro.z;
-  return true;
+  return lerMpu(a);
+}
+
+// MODO_EIXOS (ajustes.h): mostra, 3 vezes por segundo, qual eixo da MPU aponta para cima.
+void mostrarEixos() {
+  static uint32_t ultimoMs = 0;
+  if (millis() - ultimoMs < 300) return;
+  ultimoMs = millis();
+  AmostraImu a;
+  if (!obterLeitura(a)) {
+    Serial.println("ERRO: falha na leitura da MPU-6050.");
+    return;
+  }
+  float valor;
+  const char* eixo = eixoParaCima(a, valor);
+  Serial.printf("para cima: %-5s (%5.1f m/s2) | ax %5.1f ay %5.1f az %5.1f | angulo com os eixos "
+                "atuais %6.1f graus | fsr %4u mV\n",
+                eixo, valor, a.ax, a.ay, a.az, anguloAcelerometro(a),
+                (unsigned)analogReadMilliVolts(PIN_FSR));
 }
 
 // Lê o FSR e informa se a caneleira está presa à perna, avisando quando isso muda.
 bool usoEfetivo() {
   if (!USAR_FSR) return true;
   const bool antes = detectorUso.emUso;
-  const bool agora = atualizarUso(detectorUso, analogReadMilliVolts(PIN_FSR));
+  const bool agora = atualizarUso(detectorUso, analogReadMilliVolts(PIN_FSR), DT_S);
   if (agora != antes) {
     Serial.println(agora ? "Caneleira presa a perna." : "Caneleira solta: movimentos nao serao contados.");
     estadoPendente = true;
@@ -221,9 +286,12 @@ uint8_t nivelBateria() {
 void publicarEstado() {
   const bool temSessao = caneleira.sessao.status != StatusSessao::AGUARDANDO;
   const bool emUso = !USAR_FSR || detectorUso.emUso;
+  char bat[8];  // contrato v1.2: null quando a caneleira não mede bateria (power bank)
+  if (MEDIR_BATERIA) snprintf(bat, sizeof(bat), "%u", (unsigned)nivelBateria());
+  else snprintf(bat, sizeof(bat), "null");
   char json[128];
-  snprintf(json, sizeof(json), "{\"online\":true,\"bat\":%u,\"rssi\":%d,\"uso\":%s,\"sid\":%s%s%s}",
-           (unsigned)nivelBateria(), (int)WiFi.RSSI(), emUso ? "true" : "false",
+  snprintf(json, sizeof(json), "{\"online\":true,\"bat\":%s,\"rssi\":%d,\"uso\":%s,\"sid\":%s%s%s}",
+           bat, (int)WiFi.RSSI(), emUso ? "true" : "false",
            temSessao ? "\"" : "", temSessao ? caneleira.sessao.p.sid : "null", temSessao ? "\"" : "");
   mqtt.publish(TOPICO_ESTADO, json, true);
   ultimoEstadoMs = millis();
@@ -259,7 +327,7 @@ bool sessaoSalvaValida(const SessaoSalva& salva) {
   for (uint8_t i = 0; i < salva.concluidas; i++) {
     const ResumoSerie& r = salva.resumos[i];
     if (r.n != i + 1 || r.total != salva.prescricao.reps || r.validas > r.total ||
-        r.desviosAdm > r.total || r.desviosVel > r.total) return false;
+        r.desviosAdm > r.total || r.desviosVel > r.total || r.desviosCad > r.total) return false;
   }
   return true;
 }
@@ -480,11 +548,14 @@ void atualizarComunicacao() {
   proximaTentativaMs = millis() + esperaMs;
 }
 
-// Texto curto com o resultado da repetição e o motivo, se estiver fora do padrão.
+// Texto curto com o resultado da repetição e os motivos, se estiver fora do padrão.
 const char* textoResultado(const Repeticao& rep) {
   if (rep.valida) return "VALIDA";
-  if (!rep.admOk && !rep.velOk) return "FORA (adm e vel)";
-  return rep.admOk ? "FORA (vel)" : "FORA (adm)";
+  static char texto[32];
+  snprintf(texto, sizeof(texto), "FORA (%s%s%s%s%s)", !rep.admOk ? "adm" : "",
+           (!rep.admOk && (!rep.velOk || !rep.cadOk)) ? ", " : "", !rep.velOk ? "vel" : "",
+           (!rep.velOk && !rep.cadOk) ? ", " : "", !rep.cadOk ? "cad" : "");
+  return texto;
 }
 
 // Imprime cada evento da sessão e aciona o biofeedback correspondente.
@@ -492,7 +563,12 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
   const Sessao& s = caneleira.sessao;
 
   if (ev & EV_CALIBRADO) {
-    Serial.printf("Offset do giroscopio: %.2f graus/s.\n", caneleira.calib.offset);
+    Serial.printf("Offset do giroscopio: %.2f graus/s. Angulo em repouso: %.1f graus.\n",
+                  caneleira.calib.offset, caneleira.theta);
+    if (fabsf(caneleira.theta) > 35.0f) {
+      Serial.println("  Aviso: com a perna pendente, o angulo deveria ficar perto de 0. Se ela estava "
+                     "pendente, confira os eixos (MODO_EIXOS em ajustes.h).");
+    }
     if (s.status == StatusSessao::EM_EXECUCAO) anunciarSessao();
     else if (s.status == StatusSessao::AGUARDANDO) {
       Serial.println("Aguardando a prescricao do app (topico cmd)...");
@@ -503,9 +579,9 @@ void tratarEventos(uint8_t ev, const Repeticao& rep) {
   if (ev & (EV_REP_VALIDA | EV_REP_FORA)) {
     const ResumoSerie& r = s.resumos[s.serie];
     Serial.printf("Serie %u, rep %2u/%u | ADM %5.1f | vel %5.1f graus/s | sobe %.1f s | "
-                  "desce %.1f s | %s\n",
+                  "desce %.1f s | dura %.1f s | %s\n",
                   (unsigned)r.n, (unsigned)r.total, (unsigned)s.p.reps, rep.adm, rep.velPico,
-                  rep.tConc, rep.tExc, textoResultado(rep));
+                  rep.tConc, rep.tExc, rep.tTotal, textoResultado(rep));
     if (rep.valida) sinalizar(Padrao::REP_VALIDA, "1 pulso curto - repeticao valida");
     else sinalizar(Padrao::REP_FORA, "2 pulsos curtos - repeticao fora do padrao");
   }
@@ -592,7 +668,7 @@ void dormir(const DecisaoSono& d) {
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
   }
-  if (!USAR_SINAL_SIMULADO) imu.enableSleep(true);  // 3,8 mA -> 5 µA (docs/autonomia.md)
+  if (!USAR_SINAL_SIMULADO) escreverMpu(0x6B, 0x40);  // MPU em sono: 3,8 mA -> 5 µA (docs/autonomia.md)
 
   // Motor desligado e base do transistor presa em LOW durante o sono.
   acionarMotor(false);
@@ -612,7 +688,7 @@ void dormir(const DecisaoSono& d) {
 
 // Confere, a cada amostra, se a ESP32 pode dormir agora (regras em energia.h).
 void verificarSono() {
-  if (!USAR_DEEP_SLEEP) return;
+  if (!USAR_DEEP_SLEEP || !USAR_REDE) return;  // sem rede, as séries não ficam na NVS
   const Sessao& s = caneleira.sessao;
   const uint32_t ociosoMs = millis() - ultimaAtividadeMs;
   const bool pendente = limpezaPendente || seriesConcluidas(s) > seriesConfirmadas;
@@ -665,13 +741,7 @@ void setup() {
   if (!USAR_SINAL_SIMULADO) {
     Wire.begin(PIN_SDA, PIN_SCL);
     Wire.setClock(400000);
-    if (!imu.begin(0x68, &Wire)) {
-      Serial.println("ERRO: MPU-6050 nao encontrado em 0x68. Confira os quatro fios.");
-      while (true) delay(1000);
-    }
-    imu.setAccelerometerRange(MPU6050_RANGE_2_G);
-    imu.setGyroRange(MPU6050_RANGE_250_DEG);  // satura acima de 250 graus/s
-    imu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+    while (!iniciarMpu()) delay(2000);  // tenta de novo a cada 2 s (fio solto, por exemplo)
   }
 
   iniciarCaneleira(caneleira, ESPERAR_CMD ? Prescricao{} : PRESCRICAO_TESTE, INICIO_PELO_BOTAO);
@@ -690,14 +760,22 @@ void setup() {
                               strcmp(ultimaPrescricao.sid, SID_SEMENTE_P11) == 0 &&
                               caneleira.sessao.status != StatusSessao::CONCLUIDA;
   if (simularBrokerIndisponivel) Serial.println("P11 teste: broker simulado indisponivel.");
-  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira P12 - modo SIMULADO (repeticoes ficticias)."
-                                     : "Caneleira P12 - MPU-6050 real.");
+  Serial.println(USAR_SINAL_SIMULADO ? "Caneleira v1.2 - modo SIMULADO (repeticoes ficticias)."
+                                     : "Caneleira v1.2 - MPU-6050 real.");
+  if (MODO_EIXOS) {
+    Serial.println("MODO_EIXOS: so mostra os eixos. Anote o eixo 'para cima' com a perna pendente e "
+                   "com ela estendida; depois, MODO_EIXOS = false em ajustes.h.");
+  }
   Serial.println("Calibrando o giroscopio: mantenha a perna parada por 2 s...");
   proximaLeituraUs = micros() + PERIODO_US;
 }
 
 // Amostra a 100 Hz sem bloquear e entrega cada leitura ao processamento.
 void loop() {
+  if (MODO_EIXOS) {  // diagnóstico dos eixos: não processa nem conecta
+    mostrarEixos();
+    return;
+  }
   atualizarMotor();
   atualizarBotaoFisico();
   acompanharWifi();
@@ -731,8 +809,10 @@ void loop() {
   amostras++;
   if (IMPRIMIR_ANGULO && amostras % 10 == 0) {
     // Formato rótulo:valor, que o Serial Plotter da Arduino IDE 2 desenha como curvas
-    Serial.printf("theta_acc:%.1f,theta:%.1f,omega:%.1f,fase:%d,atrasos:%lu\n", caneleira.thetaAcc,
-                  caneleira.theta, caneleira.omega, 10 * (int)caneleira.sessao.det.fase,
+    // fsr em décimos de volt (100 mV = 1), para caber na mesma escala dos ângulos
+    Serial.printf("theta_acc:%.1f,theta:%.1f,omega:%.1f,fase:%d,fsr_dV:%.1f,atrasos:%lu\n",
+                  caneleira.thetaAcc, caneleira.theta, caneleira.omega,
+                  10 * (int)caneleira.sessao.det.fase, analogReadMilliVolts(PIN_FSR) / 100.0f,
                   (unsigned long)atrasos);
   }
 }

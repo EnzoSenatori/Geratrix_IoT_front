@@ -1,10 +1,13 @@
 // Teste, no computador, da lógica da caneleira sobre o roteiro simulado (P5 a P7).
 // Confere o erro do ângulo filtrado, a contagem e a classificação de cada série e,
-// desde o P12, o botão (debounce e início da série) e a decisão de deep sleep.
+// desde o P12, o botão (debounce e início da série) e a decisão de deep sleep; desde a
+// v1.2, os eixos configuráveis, os limiares relativos ao repouso, o uso efetivo com
+// tempo e a cadência.
 // A partir desta pasta:
 //   g++ -std=c++17 -Wall -Wextra -I../caneleira teste_processamento.cpp -o teste && ./teste
 
 #include <cstdio>
+#include <cstring>
 
 #include "botao.h"
 #include "energia.h"
@@ -21,6 +24,67 @@ int falhas = 0;
 void verificar(bool condicao, const char* descricao) {
   printf("  [%s] %s\n", condicao ? "ok" : "FALHA", descricao);
   if (!condicao) falhas++;
+}
+
+// Gera uma repetição em perfil cossenoidal a partir do ângulo de repouso base e a entrega ao
+// detector, amostra por amostra; termina com a perna parada por tPausa. Devolve quantas
+// repetições o detector contou e guarda a última.
+int alimentarRepeticao(DetectorRepeticao& d, float base, float amplitude, float tSubida,
+                       float tTopo, float tDescida, float tPausa, Repeticao& ultima) {
+  int contadas = 0;
+  const float total = tSubida + tTopo + tDescida + tPausa;
+  for (float t = 0; t < total; t += DT) {
+    float theta = base, omega = 0;
+    if (t < tSubida) {
+      theta = base + amplitude / 2 * (1 - cosf(PI_F * t / tSubida));
+      omega = amplitude / 2 * (PI_F / tSubida) * sinf(PI_F * t / tSubida);
+    } else if (t < tSubida + tTopo) {
+      theta = base + amplitude;
+    } else if (t < tSubida + tTopo + tDescida) {
+      const float tau = t - tSubida - tTopo;
+      theta = base + amplitude / 2 * (1 + cosf(PI_F * tau / tDescida));
+      omega = -amplitude / 2 * (PI_F / tDescida) * sinf(PI_F * tau / tDescida);
+    }
+    Repeticao rep;
+    if (detectarRepeticao(d, theta, omega, DT, true, rep)) {
+      contadas++;
+      ultima = rep;
+    }
+  }
+  return contadas;
+}
+
+// Classifica uma repetição isolada contra a prescrição de teste e devolve o resumo da série.
+ResumoSerie classificarUma(Repeticao rep) {
+  Sessao s{};
+  const Prescricao p = {"t01", 1, 10, 60.0f, 150.0f, 60};
+  iniciarSessao(s, p, 0.0f);
+  registrarRepeticao(s, rep, 0.0f);
+  return s.resumos[0];
+}
+
+// Confere, por cinemática, o eixo do giro deduzido de um par de eixos: para um vetor fixo
+// no mundo (a gravidade), visto do sensor, da/dt = -ω × a. Com a perna em θ, o sensor
+// lê a = g(cos θ·p + sin θ·e); a extensão (θ crescente) tem de dar ω positivo em V_GIRO
+// e o ângulo do acelerômetro tem de devolver θ.
+bool eixosCoerentes(Eixo pendente, Eixo estendido) {
+  const Vetor3 p = vetorEixo(pendente), e = vetorEixo(estendido);
+  const Vetor3 giro = vetorial(e, p);
+  bool ok = true;
+  for (float graus = 0; graus <= 90.0f; graus += 15.0f) {
+    const float th = graus / RAD_PARA_GRAUS, dth = 1e-3f;
+    const Vetor3 a{cosf(th) * p.x + sinf(th) * e.x, cosf(th) * p.y + sinf(th) * e.y,
+                   cosf(th) * p.z + sinf(th) * e.z};
+    const Vetor3 a2{cosf(th + dth) * p.x + sinf(th + dth) * e.x, cosf(th + dth) * p.y + sinf(th + dth) * e.y,
+                    cosf(th + dth) * p.z + sinf(th + dth) * e.z};
+    const Vetor3 derivada{(a2.x - a.x) / dth, (a2.y - a.y) / dth, (a2.z - a.z) / dth};
+    const Vetor3 w = vetorial(giro, a);  // ω × a, com ω = +1 rad/s em V_GIRO
+    ok = ok && fabsf(derivada.x + w.x) < 1e-2f && fabsf(derivada.y + w.y) < 1e-2f &&
+         fabsf(derivada.z + w.z) < 1e-2f;
+    const AmostraImu leitura{9.8f * a.x, 9.8f * a.y, 9.8f * a.z, 0, 0, 0};
+    ok = ok && fabsf(anguloAcelerometro(leitura, p, e) - graus) < 0.1f;
+  }
+  return ok;
 }
 
 int main() {
@@ -56,7 +120,8 @@ int main() {
   }
 
   printf("\nVerificacoes:\n");
-  verificar(c.calib.offset > 1.5f && c.calib.offset < 1.9f, "offset do giroscopio ~1,7 graus/s removido");
+  // O offset simulado entra nos três eixos; projetado no eixo do giro, vale ±1,7 °/s.
+  verificar(fabsf(c.calib.offset) > 1.5f && fabsf(c.calib.offset) < 1.9f, "offset do giroscopio ~1,7 graus/s removido");
   verificar(erroMax < ERRO_MAX_ANGULO_GRAUS, "erro do angulo filtrado < 3 graus em todo o roteiro");
   printf("  (erro maximo observado: %.2f graus)\n", erroMax);
   verificar(c.sessao.status == StatusSessao::CONCLUIDA, "sessao concluida apos 3 series");
@@ -69,11 +134,39 @@ int main() {
                   r.desviosAdm == ESPERADO_ADM && r.desviosVel == ESPERADO_VEL,
               d);
   }
-  // Uso efetivo: liga acima de 1,2 V, desliga abaixo de 0,8 V, mantém o estado entre eles.
+  for (uint8_t i = 0; i < SIM_SERIES; i++) {
+    verificar(c.sessao.resumos[i].desviosCad == 0, "roteiro normal: nenhum desvio de cadencia");
+  }
+  verificar(strstr(json, "\"cad\":0") != nullptr, "resumo publica desvios.cad (contrato v1.2)");
+
+  // Uso efetivo: prende acima de USO_LIGA_MV; só solta depois de USO_TEMPO_SOLTA_S abaixo de
+  // USO_DESLIGA_MV; entre os dois limiares, mantém o estado.
+  const float entre = (USO_LIGA_MV + USO_DESLIGA_MV) / 2, abaixo = USO_DESLIGA_MV - 50, acima = USO_LIGA_MV + 50;
   DetectorUso u{};
-  const bool histereseOk = atualizarUso(u, 1300) && atualizarUso(u, 1000) && !atualizarUso(u, 700) &&
-                           !atualizarUso(u, 1100) && atualizarUso(u, 1250);
-  verificar(histereseOk, "histerese do uso efetivo (liga 1,2 V, desliga 0,8 V)");
+  bool histereseOk = !atualizarUso(u, entre, DT) && atualizarUso(u, acima, DT) && atualizarUso(u, entre, DT);
+  for (int k = 0; k < 20; k++) histereseOk = atualizarUso(u, abaixo, DT) && histereseOk;  // 0,2 s de folga
+  histereseOk = atualizarUso(u, entre, DT) && histereseOk;
+  verificar(histereseOk, "uso: folga de 0,2 s na tira nao solta a caneleira");
+  bool soltou = false;
+  for (int k = 0; k < 60; k++) soltou = !atualizarUso(u, abaixo, DT) || soltou;  // 0,6 s abaixo
+  verificar(soltou && !atualizarUso(u, entre, DT) && atualizarUso(u, acima, DT),
+            "uso: 0,6 s abaixo do limiar solta; entre os limiares mantem; acima prende");
+
+  // Eixos: qualquer par de eixos perpendiculares dá ângulo e giro coerentes.
+  bool todosEixos = true;
+  const Eixo eixos[6] = {Eixo::X_POS, Eixo::X_NEG, Eixo::Y_POS, Eixo::Y_NEG, Eixo::Z_POS, Eixo::Z_NEG};
+  for (Eixo pe : eixos) {
+    for (Eixo es : eixos) {
+      if (escalar(vetorEixo(pe), vetorEixo(es)) == 0.0f) todosEixos = eixosCoerentes(pe, es) && todosEixos;
+    }
+  }
+  verificar(todosEixos, "eixos: os 24 pares possiveis dao angulo de 0 a 90 graus e giro positivo na extensao");
+  verificar((V_GIRO.x == 0 && V_GIRO.y == -1 && V_GIRO.z == 0) || EIXO_PENDENTE != Eixo::Z_POS ||
+                EIXO_ESTENDIDO != Eixo::X_POS,
+            "eixos do Wokwi (Z pendente, X estendido): a extensao e -gy");
+  float valorCima;
+  const AmostraImu deitada{0.1f, -9.7f, 0.3f, 0, 0, 0};
+  verificar(strcmp(eixoParaCima(deitada, valorCima), "Y_NEG") == 0, "MODO_EIXOS identifica o eixo para cima e o sinal");
 
   // Detector reiniciado com a perna no alto, como no fim de um descanso no meio de um
   // movimento: a descida em curso não pode virar repetição.
@@ -189,6 +282,99 @@ int main() {
   verificar(decidirSono(sono, 0.0f, false, OCIOSO_PARA_DORMIR_MS - 1).motivo == MotivoSono::NENHUM &&
                 dOcioso.motivo == MotivoSono::OCIOSO && dOcioso.dormirMs == 0,
             "sessao concluida e ociosa por 5 min: dorme e so o botao acorda");
+
+  // ===== Limiares relativos ao repouso, cadência e reinício do detector =====
+  Repeticao ultima{};
+  DetectorRepeticao dp;
+  reiniciarDetector(dp, 18.0f);
+  int noChao = alimentarRepeticao(dp, 18.0f, 0, 0, 0.5f, 0, 0, ultima);  // parada a 18°
+  for (int i = 0; i < 3; i++) noChao += alimentarRepeticao(dp, 18.0f, 60, 1.4f, 0.3f, 1.7f, 1.0f, ultima);
+  verificar(noChao == 3 && fabsf(ultima.adm - 60.0f) < 2.0f,
+            "repouso com o pe no chao (18 graus): 3 de 3 repeticoes, ADM de 60 graus");
+
+  DetectorRepeticao dm;
+  reiniciarDetector(dm, 0.0f);
+  int pequenas = alimentarRepeticao(dm, 0.0f, 0, 0, 0.5f, 0, 0, ultima);
+  for (int i = 0; i < 3; i++) pequenas += alimentarRepeticao(dm, 0.0f, 12, 0.6f, 0.2f, 0.6f, 0.5f, ultima);
+  verificar(pequenas == 0, "balanco de 12 graus nao e repeticao");
+
+  DetectorRepeticao ds;
+  reiniciarDetector(ds, 0.0f);
+  alimentarRepeticao(ds, 0.0f, 0, 0, 0.5f, 0, 0, ultima);
+  const int solta = alimentarRepeticao(ds, 0.0f, 65, 1.4f, 0.3f, 0.3f, 1.0f, ultima);
+  const ResumoSerie rs = classificarUma(ultima);
+  verificar(solta == 1 && rs.desviosCad == 1 && rs.desviosAdm == 0 && rs.desviosVel == 0 && rs.validas == 0,
+            "perna que cai (descida em 0,3 s): contada, fora do padrao so por cadencia");
+  printf("  (descida solta: t_exc medido %.2f s)\n", ultima.tExc);
+
+  DetectorRepeticao dk;
+  reiniciarDetector(dk, 0.0f);
+  alimentarRepeticao(dk, 0.0f, 0, 0, 0.5f, 0, 0, ultima);
+  const int rapidaOk = alimentarRepeticao(dk, 0.0f, 65, 1.4f, 0.3f, 0.8f, 1.0f, ultima);
+  verificar(rapidaOk == 1 && classificarUma(ultima).desviosCad == 0,
+            "descida normal mais rapida (0,8 s): nao e desvio de cadencia");
+
+  DetectorRepeticao dt;
+  reiniciarDetector(dt, 0.0f);
+  alimentarRepeticao(dt, 0.0f, 0, 0, 0.5f, 0, 0, ultima);
+  const int travada = alimentarRepeticao(dt, 0.0f, 65, 1.4f, 9.0f, 1.7f, 1.0f, ultima);
+  const ResumoSerie rt = classificarUma(ultima);
+  verificar(travada == 1 && rt.desviosCad == 1 && rt.desviosAdm == 0 && rt.validas == 0,
+            "parada de 9 s no topo: contada uma vez, fora por cadencia");
+  printf("  (parada longa: duracao medida %.1f s)\n", ultima.tTotal);
+
+  DetectorRepeticao dn;
+  reiniciarDetector(dn, 0.0f);
+  alimentarRepeticao(dn, 0.0f, 0, 0, 0.5f, 0, 0, ultima);
+  const int normal = alimentarRepeticao(dn, 0.0f, 65, 1.4f, 0.3f, 1.7f, 1.0f, ultima);
+  const ResumoSerie rn = classificarUma(ultima);
+  verificar(normal == 1 && rn.validas == 1 && rn.desviosCad == 0,
+            "repeticao controlada (1,4 s / 1,7 s): valida");
+
+  DetectorRepeticao dc;
+  reiniciarDetector(dc, 0.0f);
+  int seguidas = alimentarRepeticao(dc, 0.0f, 0, 0, 0.5f, 0, 0, ultima);
+  for (int i = 0; i < 5; i++) seguidas += alimentarRepeticao(dc, 0.0f, 65, 1.3f, 0.2f, 1.5f, 0.1f, ultima);
+  verificar(seguidas == 5, "5 repeticoes seguidas, sem pausa embaixo: 5 contadas");
+
+  DetectorRepeticao dr;
+  reiniciarDetector(dr, 60.0f);  // botão apertado com a perna estendida e parada
+  int alto = alimentarRepeticao(dr, 60.0f, 0, 0, 0.5f, 0, 0, ultima);
+  for (int k = 0; k <= 150; k++) {  // desce de 60° a 0° em 1,5 s, a -40 °/s
+    Repeticao rep;
+    alto += detectarRepeticao(dr, 60.0f * (1 - k / 150.0f), -40.0f, DT, true, rep);
+  }
+  alto += alimentarRepeticao(dr, 0.0f, 0, 0, 0.5f, 0, 0, ultima);  // parada embaixo
+  alto += alimentarRepeticao(dr, 0.0f, 65, 1.4f, 0.3f, 1.7f, 1.0f, ultima);
+  verificar(alto == 1 && fabsf(ultima.adm - 65.0f) < 2.0f,
+            "reiniciado com a perna no alto: a descida nao conta; a repeticao seguinte conta");
+
+  DetectorRepeticao dj;
+  reiniciarDetector(dj, 12.0f);  // botão apertado com a perna já subindo, a 12°
+  int jaSubindo = 0;
+  for (int k = 0; k < 150; k++) {  // sobe de 12° a 65° em 1,5 s
+    jaSubindo += detectarRepeticao(dj, 12.0f + 53.0f * k / 150.0f, 40.0f, DT, true, ultima);
+  }
+  for (int k = 0; k <= 170; k++) {  // desce de 65° a 0° em 1,7 s
+    jaSubindo += detectarRepeticao(dj, 65.0f * (1 - k / 170.0f), -38.0f, DT, true, ultima);
+  }
+  jaSubindo += alimentarRepeticao(dj, 0.0f, 0, 0, 0.5f, 0, 0, ultima);  // parada embaixo
+  verificar(jaSubindo == 1, "botao apertado com a perna ja subindo (12 graus): a repeticao conta");
+
+  // Pior caso do resumo: 6 séries com os maiores valores aceitos cabem no buffer de 1024 bytes.
+  Sessao grande{};
+  const Prescricao pg = {"abcdefghijklmno", MAX_SERIES, 50, 120.0f, 500.0f, 600};
+  iniciarSessao(grande, pg, 0.0f);
+  for (uint8_t i = 0; i < MAX_SERIES; i++) {
+    ResumoSerie& r = grande.resumos[i];
+    r.validas = 50; r.total = 50; r.desviosAdm = 50; r.desviosVel = 50; r.desviosCad = 50;
+    r.somaAdm = 50 * 120.0f; r.velPico = 500.0f; r.somaConc = 50 * 99.9f; r.somaExc = 50 * 99.9f;
+  }
+  grande.serie = MAX_SERIES - 1;
+  grande.status = StatusSessao::CONCLUIDA;
+  const int tamanho = montarJsonSessao(grande, json, sizeof(json));
+  verificar(tamanho > 0 && tamanho < 1024, "pior caso do resumo cabe no buffer de 1024 bytes");
+  printf("  (pior caso: %d bytes)\n", tamanho);
 
   printf("\n%s\n", falhas == 0 ? "RESULTADO: todas as verificacoes passaram." : "RESULTADO: ha falhas.");
   return falhas == 0 ? 0 : 1;

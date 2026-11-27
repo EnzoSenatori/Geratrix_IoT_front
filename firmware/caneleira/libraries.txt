@@ -1,5 +1,2 @@
-Adafruit MPU6050
-Adafruit Unified Sensor
-Adafruit BusIO
 PubSubClient
 ArduinoJson

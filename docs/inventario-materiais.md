@@ -2,7 +2,7 @@
 
 **Lista de materiais, versão 1 (02/11/2026).** O grupo adotou um protótipo enxuto (decisão D15 do guia): alimentação por power bank, pelo cabo USB da ESP32, e montagem em mini protoboard, sem bateria LiPo nem circuito soldado. O motivo é a falta de tempo de todos para solda e para o circuito de bateria.
 
-Em mãos: ESP32 DevKit V1 de 30 pinos e cabo USB-A ↔ Micro-USB, com o Rafael; power bank e caneleira. Falta confirmar que o cabo transmite dados e qual é o chip USB-serial da placa. Grande parte dos eletrônicos pode vir do laboratório da faculdade; o que faltar se compra numa loja nacional ou na Santa Ifigênia, de olho no prazo da banca (20/11). Esta lista não registra compras realizadas. Em 07/11, o Vitor tinha em mãos as peças da montagem (MPU-6050, FSR, motor, BC337, 1N4148, resistores, botão, protoboard e jumpers) e montou o circuito (`docs/montagem-protoboard.md`).
+Em mãos: ESP32 DevKit V1 de 30 pinos e cabo USB-A ↔ Micro-USB, com o Rafael; power bank e caneleira. Falta confirmar que o cabo transmite dados e qual é o chip USB-serial da placa. Grande parte dos eletrônicos pode vir do laboratório da faculdade; o que faltar se compra numa loja nacional ou na Santa Ifigênia, de olho no prazo da banca (20/11). Esta lista não registra compras realizadas. Em 07/11, o grupo tinha em mãos as peças da montagem (MPU-6050, FSR, motor, BC337, 1N4148, resistores, botão, protoboard e jumpers) e montou o circuito (`docs/montagem-protoboard.md`).
 
 ## Lista, versão 1
 

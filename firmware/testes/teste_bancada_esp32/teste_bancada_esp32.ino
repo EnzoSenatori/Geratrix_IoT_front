@@ -9,7 +9,7 @@
 //
 // O que esperar no Monitor Serial (115200):
 //  - "MPU-6050 ok (WHO_AM_I = 0x68)" na partida e o angulo mudando ao inclinar a placa
-//  - FSR perto de 0 mV solto e subindo ao apertar ("PRESA" acima de 1200 mV)
+//  - FSR perto de 0 mV solto e subindo ao apertar ("PRESA" acima de 600 mV, como USO_LIGA_MV em ajustes.h)
 //  - ao apertar o botao: "botao" e um pulso de 300 ms no motor
 #include <Wire.h>
 
@@ -26,7 +26,9 @@ void escreverMpu(uint8_t reg, uint8_t valor) {
 int16_t ler16(uint8_t reg) {
   Wire.beginTransmission(MPU); Wire.write(reg); Wire.endTransmission(false);
   Wire.requestFrom(MPU, (uint8_t)2);
-  return (int16_t)((Wire.read() << 8) | Wire.read());
+  const uint8_t alto = Wire.read();  // dois comandos: a ordem das leituras importa
+  const uint8_t baixo = Wire.read();
+  return (int16_t)((alto << 8) | baixo);
 }
 
 void motor(bool ligado) {
@@ -84,7 +86,7 @@ void loop() {
       angulo = atan2f(ax, az) * 57.2958f;
     }
     Serial.printf("FSR %4u mV %-6s | angulo %6.1f graus | botao %s\n",
-                  (unsigned)fsrMv, fsrMv >= 1200 ? "PRESA" : (fsrMv < 800 ? "solta" : "-"),
+                  (unsigned)fsrMv, fsrMv >= 600 ? "PRESA" : (fsrMv < 300 ? "solta" : "-"),
                   angulo, botao ? "solto" : "APERTADO");
   }
 }

@@ -2,7 +2,7 @@
 
 Lógica IoT da caneleira instrumentada para extensão de joelho, integrada ao aplicativo Geratrix. Projeto de extensão da disciplina Desenvolvimento IoT (Engenharia de Computação, Universidade Presbiteriana Mackenzie, 2026-2), em parceria com o IMREA.
 
-**Grupo:** Enzo Senatori, Rafael de Oliveira Corrêa, Theo Casella Mendonça e Felipe · **Banca:** 20/11/2026
+**Grupo:** Enzo Senatori, Rafael de Oliveira Corrêa, Theo Casella Mendonça e Felipe · **Banca:** 27/11/2026
 
 > Protótipo didático. Não é dispositivo médico, não há teste com pacientes e não há dados reais: todos os valores do repositório são fictícios.
 
@@ -17,18 +17,18 @@ O repositório reúne o pacote de continuidade de 13/10/2026 e, desde 01/11, a l
 | P1 — Contrato MQTT | Concluída | Teste manual no MQTTX, com mensagens digitadas |
 | P2 — Compra de componentes | Aberta: lista de materiais versão 1 (02/11), sem solda nem bateria, em `docs/inventario-materiais.md`; em mãos, ESP32, cabo, power bank e caneleira | — |
 | P3 — Leitura da IMU a 100 Hz | Concluída | Somente em simulação (Wokwi) |
-| P4 — Leitura real, offset e eixos | Não iniciada; aguarda as peças | — |
+| P4 — Leitura real, offset e eixos | Eixos configuráveis em `firmware/caneleira/ajustes.h`, com o `MODO_EIXOS` para identificá-los na caneleira (27/11); valores medidos pendentes | Computador (27/11) |
 | P5 a P7 — Filtro, contagem e classificação das repetições, resumo da série | Concluídas em simulação | Computador e Wokwi (01/11) |
 | P8 — Uso efetivo pelo sensor de pressão | Concluída em simulação | Wokwi, com potenciômetro no lugar do FSR (02/11) |
 | P9 — Biofeedback por vibração | Concluída em simulação | Wokwi, com LED no lugar do motor (02/11) |
 | P10 — MQTT na ESP32 | Concluída em simulação. `estado`, aviso de desconexão, `cmd`, `sessao/<sid>` e `ack` verificados | Wokwi e MQTTX, no broker novo (02/11) |
 | P11 — Operação sem rede | Concluída em simulação. Queda durante a série, recuperação após reinício e início offline com a última prescrição, seguido de sincronização e ACK | Wokwi e MQTTX (06/11), com [evidências](evidencias/p11/) |
-| App — integração MQTT (`cmd`, `sessao`, `ack`, `estado`) | Não iniciada; as telas são HTML/CSS estático, com dados fixos | — |
-| P12 — Baixo consumo e autonomia | Em andamento. Autonomia estimada pelos datasheets (06/11, `docs/autonomia.md`); código do botão e do *deep sleep* implementado (08/11). Falta rodar no Wokwi e medir na placa | Computador (08/11) |
-| P13 — Montagem | Em andamento. Circuito montado numa protoboard de 400 pontos, sem a ESP32, com o roteiro em `docs/montagem-protoboard.md` (08/11). Falta conferir, encaixar a ESP32 e rodar o teste de bancada | Bancada, sem energia |
+| App — integração MQTT (`cmd`, `sessao`, `ack`, `estado`) | Feita no app Flutter do repositório Geratrix (tela de registro de exercício) | Wokwi e app (07/11), com [evidências](evidencias/app/) |
+| P12 — Baixo consumo e autonomia | Autonomia estimada pelos datasheets (06/11, `docs/autonomia.md`); botão e *deep sleep* implementados (08/11). Na apresentação, `USAR_DEEP_SLEEP = false`, até testar se o power bank continua ligado com o consumo do sono | Computador (08/11) |
+| P13 — Montagem | Protoboard de 400 pontos montada, com a ESP32 ligada por jumpers, conforme `docs/montagem-protoboard.md` e `docs/diagrama-protoboard.png` | Bancada |
 | P14 a P16 — Validação, documentação e relatório | Protocolo do P14 declarado (06/11); ensaios não iniciados | — |
 
-Nada foi testado ainda na placa real nem no aplicativo.
+Firmware v1.2 (27/11): todos os valores ajustáveis em `firmware/caneleira/ajustes.h`; limiares de repetição relativos ao repouso; uso efetivo com histerese de tempo; cadência (`desvios.cad`); `bat` nulo com o power bank; MPU-6050 lida sem biblioteca. Testado no computador e compilado para a ESP32 (core 3.3.13); não testado na placa.
 
 ## Estrutura
 
@@ -56,7 +56,7 @@ O enunciado da disciplina e a proposta do grupo não são versionados enquanto o
 
 **Lógica no computador.** Em `firmware/testes/`, `g++ -std=c++17 -I../caneleira teste_processamento.cpp -o teste && ./teste` percorre o roteiro simulado e confere cada série.
 
-**Firmware na placa.** Monte o circuito como em `docs/montagem-protoboard.md` e grave primeiro `firmware/testes/teste_bancada_esp32/`, que confere cada peça. Depois, instale a Arduino IDE, o pacote de placas ESP32 da Espressif e a biblioteca Adafruit MPU6050. Ligue a MPU-6050 à ESP32 (VCC → 3V3, GND → GND, SDA → GPIO 21, SCL → GPIO 22), abra `firmware/caneleira/caneleira.ino`, grave e acompanhe o monitor serial em 115200 baud. O procedimento completo está na seção 3.3 de `docs/repasse-rafael.md`.
+**Firmware na placa.** Monte o circuito como em `docs/montagem-protoboard.md` e grave primeiro `firmware/testes/teste_bancada_esp32/`, que confere cada peça. Depois, instale a Arduino IDE, o pacote de placas ESP32 da Espressif e as bibliotecas PubSubClient e ArduinoJson; copie `segredos.exemplo.h` como `segredos.h` e preencha o Wi-Fi e a senha do broker. Abra `firmware/caneleira/caneleira.ino`, grave e acompanhe o monitor serial em 115200 baud. Tudo o que se ajusta na placa (eixos, limiares, FSR, motor e modos) fica em `firmware/caneleira/ajustes.h`.
 
 **Aplicativo.** Abra `app/index.html` no navegador para o fluxo completo, ou `app/checkin-exercicio.html` e `app/historico.html` para as duas telas da caneleira.
 
